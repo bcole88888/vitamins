@@ -1,0 +1,54 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String      @id @default(cuid())
+  name      String
+  createdAt DateTime    @default(now())
+  intakes   IntakeLog[]
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  upc         String?     @unique
+  name        String
+  brand       String?
+  servingSize Float?
+  servingUnit String?
+  imageUrl    String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  nutrients   Nutrient[]
+  intakes     IntakeLog[]
+}
+
+model Nutrient {
+  id                String  @id @default(cuid())
+  productId         String
+  product           Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name              String
+  amount            Float
+  unit              String
+  dailyValuePercent Float?
+
+  @@unique([productId, name])
+}
+
+model IntakeLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  date      DateTime @default(now())
+  quantity  Float    @default(1)
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
+}
