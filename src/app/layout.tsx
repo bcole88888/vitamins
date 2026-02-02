@@ -35,6 +35,12 @@ export default function RootLayout({
                   Add Supplement
                 </Link>
                 <Link
+                  href="/regimen"
+                  className="text-gray-600 hover:text-gray-900 font-medium"
+                >
+                  My Regimen
+                </Link>
+                <Link
                   href="/history"
                   className="text-gray-600 hover:text-gray-900 font-medium"
                 >

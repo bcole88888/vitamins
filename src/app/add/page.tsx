@@ -22,6 +22,10 @@ export default function AddSupplementPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [webSearching, setWebSearching] = useState(false)
+  const [webSearchResults, setWebSearchResults] = useState<Array<{ title: string; url: string; snippet: string }>>([])
+  const [manualEntry, setManualEntry] = useState(false)
+  const [manualProduct, setManualProduct] = useState({ name: '', brand: '' })
 
   // Load saved products
   useEffect(() => {
@@ -45,19 +49,52 @@ export default function AddSupplementPage() {
     }
   }, [selectedUserId])
 
+  const handleWebSearch = async (searchUpc: string) => {
+    setWebSearching(true)
+    setWebSearchResults([])
+
+    try {
+      const res = await fetch('/api/lookup/websearch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ upc: searchUpc }),
+      })
+      const data = await res.json()
+
+      if (data.product) {
+        setLookupResult(data.product)
+        setError('')
+        setManualEntry(false)
+      } else {
+        setWebSearchResults(data.searchResults || [])
+        setManualEntry(true)
+        setManualProduct({ name: '', brand: '' })
+      }
+    } catch (err) {
+      console.error('Web search failed:', err)
+      setManualEntry(true)
+    } finally {
+      setWebSearching(false)
+    }
+  }
+
   const handleLookup = async () => {
     if (!upc.trim()) return
 
     setLoading(true)
     setError('')
     setLookupResult(null)
+    setWebSearchResults([])
+    setManualEntry(false)
 
     try {
       const res = await fetch(`/api/lookup/${encodeURIComponent(upc.trim())}`)
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error || 'Product not found')
+        // Product not found in Open Food Facts, try web search
+        setError('')
+        await handleWebSearch(upc.trim())
         return
       }
 
@@ -68,6 +105,19 @@ export default function AddSupplementPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleManualAdd = () => {
+    if (!manualProduct.name.trim()) return
+
+    const product: ProductData = {
+      upc: upc.trim() || undefined,
+      name: manualProduct.name.trim(),
+      brand: manualProduct.brand.trim() || undefined,
+      nutrients: [],
+    }
+    setLookupResult(product)
+    setManualEntry(false)
   }
 
   const handleSearch = async () => {
@@ -230,12 +280,83 @@ export default function AddSupplementPage() {
           />
           <button
             onClick={handleLookup}
-            disabled={loading}
+            disabled={loading || webSearching}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? 'Looking up...' : 'Lookup'}
+            {loading ? 'Looking up...' : webSearching ? 'Searching web...' : 'Lookup'}
           </button>
         </div>
+
+        {webSearching && (
+          <div className="mt-4 text-center text-gray-600">
+            Product not found in Open Food Facts. Searching the web...
+          </div>
+        )}
+
+        {manualEntry && !lookupResult && (
+          <div className="mt-4 space-y-4">
+            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded">
+              Product not found in databases. You can enter the details manually.
+            </div>
+
+            {webSearchResults.length > 0 && (
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="font-medium text-gray-700 mb-2">Related results found:</h3>
+                <ul className="space-y-2 text-sm">
+                  {webSearchResults.map((result, i) => (
+                    <li key={i}>
+                      <a
+                        href={result.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        {result.title}
+                      </a>
+                      {result.snippet && (
+                        <p className="text-gray-500 text-xs mt-1">{result.snippet}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Product Name *
+                </label>
+                <input
+                  type="text"
+                  value={manualProduct.name}
+                  onChange={e => setManualProduct(p => ({ ...p, name: e.target.value }))}
+                  placeholder="e.g., Vitamin D3 1000 IU"
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Brand (optional)
+                </label>
+                <input
+                  type="text"
+                  value={manualProduct.brand}
+                  onChange={e => setManualProduct(p => ({ ...p, brand: e.target.value }))}
+                  placeholder="e.g., Nature Made"
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <button
+                onClick={handleManualAdd}
+                disabled={!manualProduct.name.trim()}
+                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                Use This Product
+              </button>
+            </div>
+          </div>
+        )}
 
         {lookupResult && (
           <div className="mt-4 space-y-4">

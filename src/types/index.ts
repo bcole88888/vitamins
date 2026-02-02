@@ -48,3 +48,39 @@ export interface Insight {
   message: string
   details?: string
 }
+
+export interface Regimen {
+  id: string
+  userId: string
+  name: string
+  createdAt: string
+  updatedAt: string
+  items: RegimenItem[]
+}
+
+export interface RegimenItem {
+  id: string
+  regimenId: string
+  productId: string
+  quantity: number
+  sortOrder: number
+  createdAt: string
+  product: {
+    id: string
+    name: string
+    brand?: string
+    servingUnit?: string
+  }
+}
+
+export interface RegimenChecklistItem {
+  id: string
+  productId: string
+  productName: string
+  productBrand?: string
+  servingUnit?: string
+  quantity: number
+  sortOrder: number
+  isLogged: boolean
+  intakeLogId?: string
+}

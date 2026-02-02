@@ -12,20 +12,22 @@ model User {
   name      String
   createdAt DateTime    @default(now())
   intakes   IntakeLog[]
+  regimens  Regimen[]
 }
 
 model Product {
-  id          String      @id @default(cuid())
-  upc         String?     @unique
-  name        String
-  brand       String?
-  servingSize Float?
-  servingUnit String?
-  imageUrl    String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  nutrients   Nutrient[]
-  intakes     IntakeLog[]
+  id           String        @id @default(cuid())
+  upc          String?       @unique
+  name         String
+  brand        String?
+  servingSize  Float?
+  servingUnit  String?
+  imageUrl     String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  nutrients    Nutrient[]
+  intakes      IntakeLog[]
+  regimenItems RegimenItem[]
 }
 
 model Nutrient {
@@ -51,4 +53,31 @@ model IntakeLog {
   createdAt DateTime @default(now())
 
   @@index([userId, date])
+}
+
+model Regimen {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String        @default("Daily Regimen")
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  items     RegimenItem[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model RegimenItem {
+  id        String   @id @default(cuid())
+  regimenId String
+  regimen   Regimen  @relation(fields: [regimenId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Float    @default(1)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([regimenId, productId])
+  @@index([regimenId])
 }
