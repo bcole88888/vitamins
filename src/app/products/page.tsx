@@ -21,8 +21,8 @@ export default function ProductsPage() {
   const fetchProducts = async () => {
     try {
       const res = await fetch('/api/products')
-      const data = await res.json()
-      setProducts(data)
+      const json = await res.json()
+      setProducts(json.data || [])
     } catch (error) {
       console.error('Error fetching products:', error)
     } finally {

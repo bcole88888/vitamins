@@ -31,7 +31,7 @@ export default function AddSupplementPage() {
   useEffect(() => {
     fetch('/api/products')
       .then(res => res.json())
-      .then(setSavedProducts)
+      .then(data => setSavedProducts(data.data || []))
       .catch(console.error)
   }, [])
 
@@ -49,7 +49,7 @@ export default function AddSupplementPage() {
     }
   }, [selectedUserId])
 
-  const handleWebSearch = async (searchUpc: string) => {
+  const handleWebSearch = async (searchUpc: string, productName?: string, brand?: string) => {
     setWebSearching(true)
     setWebSearchResults([])
 
@@ -57,18 +57,28 @@ export default function AddSupplementPage() {
       const res = await fetch('/api/lookup/websearch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ upc: searchUpc }),
+        body: JSON.stringify({
+          upc: searchUpc,
+          productName,
+          brand,
+        }),
       })
       const data = await res.json()
 
-      if (data.product) {
+      if (data.product && data.product.nutrients && data.product.nutrients.length > 0) {
         setLookupResult(data.product)
+        setError('')
+        setManualEntry(false)
+      } else if (data.product) {
+        // Product found but no nutrients - show it but allow manual entry
+        setLookupResult(data.product)
+        setWebSearchResults(data.searchResults || [])
         setError('')
         setManualEntry(false)
       } else {
         setWebSearchResults(data.searchResults || [])
         setManualEntry(true)
-        setManualProduct({ name: '', brand: '' })
+        setManualProduct({ name: productName || '', brand: brand || '' })
       }
     } catch (err) {
       console.error('Web search failed:', err)
@@ -92,13 +102,24 @@ export default function AddSupplementPage() {
       const data = await res.json()
 
       if (!res.ok) {
-        // Product not found in Open Food Facts, try web search
+        // Product not found in any database, try web search
         setError('')
         await handleWebSearch(upc.trim())
         return
       }
 
-      setLookupResult(data.product)
+      const product = data.product
+
+      // If product found but has no nutrients, try to enrich via web search
+      if (product && (!product.nutrients || product.nutrients.length === 0)) {
+        setLookupResult(product) // Show product while searching
+        setLoading(false)
+        // Pass upc to websearch - it will look up the real product name if needed
+        await handleWebSearch(upc.trim(), product.name, product.brand)
+        return
+      }
+
+      setLookupResult(product)
     } catch (err) {
       setError('Failed to lookup product')
       console.error(err)
@@ -197,7 +218,8 @@ export default function AddSupplementPage() {
 
       // Refresh saved products
       const productsRes = await fetch('/api/products')
-      setSavedProducts(await productsRes.json())
+      const productsData = await productsRes.json()
+      setSavedProducts(productsData.data || [])
     } catch (err) {
       setError('Failed to add product')
       console.error(err)
