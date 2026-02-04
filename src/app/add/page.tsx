@@ -26,6 +26,22 @@ export default function AddSupplementPage() {
   const [webSearchResults, setWebSearchResults] = useState<Array<{ title: string; url: string; snippet: string }>>([])
   const [manualEntry, setManualEntry] = useState(false)
   const [manualProduct, setManualProduct] = useState({ name: '', brand: '' })
+  const [manualNutrients, setManualNutrients] = useState<Array<{ name: string; amount: string; unit: string }>>([])
+  const [showNutrientForm, setShowNutrientForm] = useState(false)
+
+  const addManualNutrient = () => {
+    setManualNutrients([...manualNutrients, { name: '', amount: '', unit: 'mg' }])
+  }
+
+  const updateManualNutrient = (index: number, field: string, value: string) => {
+    const updated = [...manualNutrients]
+    updated[index] = { ...updated[index], [field]: value }
+    setManualNutrients(updated)
+  }
+
+  const removeManualNutrient = (index: number) => {
+    setManualNutrients(manualNutrients.filter((_, i) => i !== index))
+  }
 
   // Load saved products
   useEffect(() => {
@@ -96,6 +112,8 @@ export default function AddSupplementPage() {
     setLookupResult(null)
     setWebSearchResults([])
     setManualEntry(false)
+    setManualNutrients([])
+    setShowNutrientForm(false)
 
     try {
       const res = await fetch(`/api/lookup/${encodeURIComponent(upc.trim())}`)
@@ -180,12 +198,26 @@ export default function AddSupplementPage() {
     setError('')
     setSuccess('')
 
+    // Merge manual nutrients with existing product nutrients
+    const validManualNutrients = manualNutrients
+      .filter(n => n.name.trim() && n.amount.trim())
+      .map(n => ({
+        name: n.name.trim(),
+        amount: parseFloat(n.amount) || 0,
+        unit: n.unit,
+      }))
+
+    const productWithNutrients = {
+      ...product,
+      nutrients: [...(product.nutrients || []), ...validManualNutrients],
+    }
+
     try {
       // First, save the product to our database
       const productRes = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(product),
+        body: JSON.stringify(productWithNutrients),
       })
       const savedProduct = await productRes.json()
 
@@ -215,6 +247,8 @@ export default function AddSupplementPage() {
       setLookupResult(null)
       setUpc('')
       setQuantity(1)
+      setManualNutrients([])
+      setShowNutrientForm(false)
 
       // Refresh saved products
       const productsRes = await fetch('/api/products')
@@ -383,11 +417,83 @@ export default function AddSupplementPage() {
         {lookupResult && (
           <div className="mt-4 space-y-4">
             <ProductCard product={lookupResult} showActions={false} />
-            {lookupResult.nutrients.length === 0 && (
-              <p className="text-orange-600 text-sm">
-                Note: No nutrient data found for this product. You can still add it, but nutrient tracking won&apos;t work.
-              </p>
+
+            {/* Manual Nutrient Entry */}
+            {(lookupResult.nutrients.length === 0 || showNutrientForm) && (
+              <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium text-gray-700">
+                    {lookupResult.nutrients.length === 0 ? 'Add Nutrients Manually' : 'Add More Nutrients'}
+                  </h3>
+                  {lookupResult.nutrients.length > 0 && (
+                    <button
+                      onClick={() => setShowNutrientForm(false)}
+                      className="text-sm text-gray-500 hover:text-gray-700"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+                {lookupResult.nutrients.length === 0 && manualNutrients.length === 0 && (
+                  <p className="text-sm text-orange-600">
+                    No nutrient data found. Add nutrients manually for tracking.
+                  </p>
+                )}
+
+                {manualNutrients.map((nutrient, index) => (
+                  <div key={index} className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      value={nutrient.name}
+                      onChange={e => updateManualNutrient(index, 'name', e.target.value)}
+                      placeholder="Nutrient name (e.g., Vitamin D3)"
+                      className="flex-1 px-3 py-2 border rounded text-sm"
+                    />
+                    <input
+                      type="number"
+                      value={nutrient.amount}
+                      onChange={e => updateManualNutrient(index, 'amount', e.target.value)}
+                      placeholder="Amount"
+                      className="w-24 px-3 py-2 border rounded text-sm"
+                    />
+                    <select
+                      value={nutrient.unit}
+                      onChange={e => updateManualNutrient(index, 'unit', e.target.value)}
+                      className="w-20 px-2 py-2 border rounded text-sm"
+                    >
+                      <option value="mcg">mcg</option>
+                      <option value="mg">mg</option>
+                      <option value="g">g</option>
+                      <option value="IU">IU</option>
+                      <option value="%">%DV</option>
+                    </select>
+                    <button
+                      onClick={() => removeManualNutrient(index)}
+                      className="text-red-500 hover:text-red-700 px-2"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+
+                <button
+                  onClick={addManualNutrient}
+                  className="text-sm text-blue-600 hover:text-blue-800"
+                >
+                  + Add Nutrient
+                </button>
+              </div>
             )}
+
+            {lookupResult.nutrients.length > 0 && !showNutrientForm && (
+              <button
+                onClick={() => setShowNutrientForm(true)}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                + Add more nutrients manually
+              </button>
+            )}
+
             <div className="flex items-center gap-4">
               <label className="font-medium">Quantity:</label>
               <input
