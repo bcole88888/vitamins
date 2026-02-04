@@ -86,6 +86,51 @@ export async function POST(request: Request) {
   }
 }
 
+export async function PUT(request: Request) {
+  try {
+    const { id, nutrients } = await request.json()
+
+    if (!id) {
+      return apiError('Product ID is required', 400)
+    }
+
+    if (!Array.isArray(nutrients)) {
+      return apiError('Nutrients must be an array', 400)
+    }
+
+    // Delete existing nutrients and create new ones in a transaction
+    await prisma.$transaction([
+      prisma.nutrient.deleteMany({
+        where: { productId: id },
+      }),
+      ...nutrients
+        .filter((n: { name: string; amount: number; unit: string }) => n.name && n.amount !== undefined)
+        .map((n: { name: string; amount: number; unit: string; dailyValuePercent?: number }) =>
+          prisma.nutrient.create({
+            data: {
+              productId: id,
+              name: n.name,
+              amount: n.amount,
+              unit: n.unit,
+              dailyValuePercent: n.dailyValuePercent,
+            },
+          })
+        ),
+    ])
+
+    // Return updated product
+    const product = await prisma.product.findUnique({
+      where: { id },
+      include: productInclude,
+    })
+
+    return NextResponse.json(product)
+  } catch (error) {
+    console.error('Update product error:', error)
+    return apiError('Failed to update product', 500)
+  }
+}
+
 export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
