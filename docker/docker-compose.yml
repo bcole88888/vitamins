@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  vitamins:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: vitamins-tracker
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/data/vitamins.db
+    volumes:
+      # Persist SQLite database
+      - vitamins-data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/users"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  vitamins-data:
+    driver: local
