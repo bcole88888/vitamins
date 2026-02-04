@@ -60,7 +60,7 @@ export default function RegimenPage() {
         id: i.id,
         productId: i.productId,
       })))
-      setProducts(productsData)
+      setProducts(productsData.data || [])
     } catch (error) {
       console.error('Error fetching data:', error)
     } finally {
