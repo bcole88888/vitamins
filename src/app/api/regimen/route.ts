@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { apiError } from '@/lib/apiUtils'
+import { isScheduledForDay } from '@/lib/schedule'
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
+    const dayParam = searchParams.get('day')
 
     if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 })
+      return apiError('userId is required', 400)
     }
 
     const regimens = await prisma.regimen.findMany({
@@ -30,30 +33,40 @@ export async function GET(request: Request) {
       orderBy: { createdAt: 'asc' },
     })
 
+    // Filter items by day if specified
+    if (dayParam !== null) {
+      const day = parseInt(dayParam, 10)
+      if (day >= 0 && day <= 6) {
+        for (const regimen of regimens) {
+          regimen.items = regimen.items.filter(item =>
+            isScheduledForDay(item.scheduleDays, day)
+          )
+        }
+      }
+    }
+
     return NextResponse.json(regimens)
   } catch (error) {
-    console.error('Error fetching regimens:', error)
-    return NextResponse.json({ error: 'Failed to fetch regimens' }, { status: 500 })
+    return apiError('Failed to fetch regimens', 500)
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const { userId, name = 'Daily Regimen' } = await request.json()
+    const { userId } = await request.json()
 
     if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 })
+      return apiError('userId is required', 400)
     }
 
     const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+      return apiError('User not found', 404)
     }
 
     const regimen = await prisma.regimen.create({
       data: {
         userId,
-        name,
       },
       include: {
         items: {
@@ -73,8 +86,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(regimen, { status: 201 })
   } catch (error) {
-    console.error('Error creating regimen:', error)
-    return NextResponse.json({ error: 'Failed to create regimen' }, { status: 500 })
+    return apiError('Failed to create regimen', 500)
   }
 }
 
@@ -84,7 +96,7 @@ export async function DELETE(request: Request) {
     const id = searchParams.get('id')
 
     if (!id) {
-      return NextResponse.json({ error: 'Regimen ID is required' }, { status: 400 })
+      return apiError('Regimen ID is required', 400)
     }
 
     await prisma.regimen.delete({
@@ -93,7 +105,6 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error deleting regimen:', error)
-    return NextResponse.json({ error: 'Failed to delete regimen' }, { status: 500 })
+    return apiError('Failed to delete regimen', 500)
   }
 }

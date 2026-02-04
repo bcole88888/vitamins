@@ -8,11 +8,12 @@ datasource db {
 }
 
 model User {
-  id        String      @id @default(cuid())
-  name      String
-  createdAt DateTime    @default(now())
-  intakes   IntakeLog[]
-  regimens  Regimen[]
+  id                     String                  @id @default(cuid())
+  name                   String
+  createdAt              DateTime                @default(now())
+  intakes                IntakeLog[]
+  regimens               Regimen[]
+  notificationPreference NotificationPreference?
 }
 
 model Product {
@@ -69,15 +70,26 @@ model Regimen {
 }
 
 model RegimenItem {
-  id        String   @id @default(cuid())
-  regimenId String
-  regimen   Regimen  @relation(fields: [regimenId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  quantity  Float    @default(1)
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  regimenId    String
+  regimen      Regimen  @relation(fields: [regimenId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity     Float    @default(1)
+  sortOrder    Int      @default(0)
+  scheduleDays String   @default("0,1,2,3,4,5,6") // CSV: 0=Sun to 6=Sat
+  createdAt    DateTime @default(now())
 
   @@unique([regimenId, productId])
   @@index([regimenId])
+}
+
+model NotificationPreference {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enabled      Boolean  @default(false)
+  reminderTime String   @default("09:00")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

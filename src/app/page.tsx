@@ -5,6 +5,7 @@ import { UserSelector } from '@/components/UserSelector'
 import { NutrientBar } from '@/components/NutrientBar'
 import { IntakeList } from '@/components/IntakeList'
 import { NutrientChart } from '@/components/Charts/NutrientChart'
+import { NotificationBanner } from '@/components/NotificationBanner'
 import { AggregatedNutrient } from '@/types'
 import { formatDate, formatDateDisplay } from '@/lib/utils'
 
@@ -79,6 +80,8 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      <NotificationBanner userId={selectedUserId} />
+
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Daily Summary</h1>

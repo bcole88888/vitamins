@@ -1,5 +1,5 @@
 import { AggregatedNutrient, Insight } from '@/types'
-import { getRdiInfo, isAboveUpperLimit } from './nutrients'
+import { getRdiInfo, isAboveUpperLimit, checkInteractions } from './nutrients'
 
 export function formatDate(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date
@@ -93,6 +93,38 @@ export function generateInsights(nutrients: AggregatedNutrient[]): Insight[] {
       message: 'Good nutrient coverage',
       details: `You have adequate levels (50-150% DV) of ${wellCovered.length} nutrients including ${wellCovered.slice(0, 3).map(n => n.name).join(', ')}.`,
     })
+  }
+
+  // Check for nutrient interactions
+  const nutrientNames = nutrients.map(n => n.name)
+  const interactions = checkInteractions(nutrientNames)
+
+  for (const interaction of interactions) {
+    if (interaction.type === 'inhibits') {
+      insights.push({
+        type: 'warning',
+        category: 'interaction',
+        nutrient: `${interaction.nutrient1} + ${interaction.nutrient2}`,
+        message: `${interaction.nutrient1} and ${interaction.nutrient2} may interact`,
+        details: interaction.description,
+      })
+    } else if (interaction.type === 'caution') {
+      insights.push({
+        type: 'warning',
+        category: 'interaction',
+        nutrient: `${interaction.nutrient1} + ${interaction.nutrient2}`,
+        message: `Caution: ${interaction.nutrient1} and ${interaction.nutrient2}`,
+        details: interaction.description,
+      })
+    } else if (interaction.type === 'enhances') {
+      insights.push({
+        type: 'info',
+        category: 'interaction',
+        nutrient: `${interaction.nutrient1} + ${interaction.nutrient2}`,
+        message: `${interaction.nutrient1} enhances ${interaction.nutrient2}`,
+        details: interaction.description,
+      })
+    }
   }
 
   return insights

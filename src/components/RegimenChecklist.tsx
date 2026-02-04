@@ -1,6 +1,7 @@
 'use client'
 
 import { RegimenChecklistItem } from '@/types'
+import { getScheduleLabel, ALL_DAYS } from '@/lib/schedule'
 
 interface RegimenChecklistProps {
   items: RegimenChecklistItem[]
@@ -9,6 +10,7 @@ interface RegimenChecklistProps {
   onToggle: (productId: string, checked: boolean, quantity: number) => void
   onLogAll: () => void
   loading?: boolean
+  showScheduleBadge?: boolean
 }
 
 export function RegimenChecklist({
@@ -16,6 +18,7 @@ export function RegimenChecklist({
   onToggle,
   onLogAll,
   loading = false,
+  showScheduleBadge = false,
 }: RegimenChecklistProps) {
   if (items.length === 0) {
     return (
@@ -52,9 +55,16 @@ export function RegimenChecklist({
                 <span className="text-gray-500 ml-1">x{item.quantity}</span>
               )}
             </div>
-            {item.productBrand && (
-              <div className="text-sm text-gray-500">{item.productBrand}</div>
-            )}
+            <div className="flex items-center gap-2">
+              {item.productBrand && (
+                <span className="text-sm text-gray-500">{item.productBrand}</span>
+              )}
+              {showScheduleBadge && item.scheduleDays !== ALL_DAYS && (
+                <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
+                  {getScheduleLabel(item.scheduleDays)}
+                </span>
+              )}
+            </div>
           </div>
           {item.servingUnit && (
             <div className="text-sm text-gray-400">

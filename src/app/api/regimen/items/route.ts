@@ -1,15 +1,13 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { apiError } from '@/lib/apiUtils'
 
 export async function POST(request: Request) {
   try {
-    const { regimenId, productId, quantity = 1 } = await request.json()
+    const { regimenId, productId, quantity = 1, scheduleDays = '0,1,2,3,4,5,6' } = await request.json()
 
     if (!regimenId || !productId) {
-      return NextResponse.json(
-        { error: 'regimenId and productId are required' },
-        { status: 400 }
-      )
+      return apiError('regimenId and productId are required', 400)
     }
 
     const [regimen, product] = await Promise.all([
@@ -18,55 +16,59 @@ export async function POST(request: Request) {
     ])
 
     if (!regimen) {
-      return NextResponse.json({ error: 'Regimen not found' }, { status: 404 })
+      return apiError('Regimen not found', 404)
     }
 
     if (!product) {
-      return NextResponse.json({ error: 'Product not found' }, { status: 404 })
+      return apiError('Product not found', 404)
     }
 
-    const maxSortOrder = await prisma.regimenItem.aggregate({
-      where: { regimenId },
-      _max: { sortOrder: true },
-    })
+    const item = await prisma.$transaction(async (tx) => {
+      const maxSortOrder = await tx.regimenItem.aggregate({
+        where: { regimenId },
+        _max: { sortOrder: true },
+      })
 
-    const item = await prisma.regimenItem.create({
-      data: {
-        regimenId,
-        productId,
-        quantity,
-        sortOrder: (maxSortOrder._max.sortOrder ?? -1) + 1,
-      },
-      include: {
-        product: {
-          select: {
-            id: true,
-            name: true,
-            brand: true,
-            servingUnit: true,
+      const newItem = await tx.regimenItem.create({
+        data: {
+          regimenId,
+          productId,
+          quantity,
+          sortOrder: (maxSortOrder._max.sortOrder ?? -1) + 1,
+          scheduleDays,
+        },
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              brand: true,
+              servingUnit: true,
+            },
           },
         },
-      },
+      })
+      return newItem
     })
 
     return NextResponse.json(item, { status: 201 })
   } catch (error) {
-    console.error('Error adding item to regimen:', error)
-    return NextResponse.json({ error: 'Failed to add item to regimen' }, { status: 500 })
+    return apiError('Failed to add item to regimen', 500)
   }
 }
 
 export async function PUT(request: Request) {
   try {
-    const { itemId, quantity, sortOrder } = await request.json()
+    const { itemId, quantity, sortOrder, scheduleDays } = await request.json()
 
     if (!itemId) {
-      return NextResponse.json({ error: 'itemId is required' }, { status: 400 })
+      return apiError('itemId is required', 400)
     }
 
-    const updateData: { quantity?: number; sortOrder?: number } = {}
+    const updateData: { quantity?: number; sortOrder?: number; scheduleDays?: string } = {}
     if (quantity !== undefined) updateData.quantity = quantity
     if (sortOrder !== undefined) updateData.sortOrder = sortOrder
+    if (scheduleDays !== undefined) updateData.scheduleDays = scheduleDays
 
     const item = await prisma.regimenItem.update({
       where: { id: itemId },
@@ -85,8 +87,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json(item)
   } catch (error) {
-    console.error('Error updating regimen item:', error)
-    return NextResponse.json({ error: 'Failed to update regimen item' }, { status: 500 })
+    return apiError('Failed to update regimen item', 500)
   }
 }
 
@@ -96,7 +97,7 @@ export async function DELETE(request: Request) {
     const itemId = searchParams.get('itemId')
 
     if (!itemId) {
-      return NextResponse.json({ error: 'itemId is required' }, { status: 400 })
+      return apiError('itemId is required', 400)
     }
 
     await prisma.regimenItem.delete({
@@ -105,7 +106,6 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error removing item from regimen:', error)
-    return NextResponse.json({ error: 'Failed to remove item from regimen' }, { status: 500 })
+    return apiError('Failed to remove item from regimen', 500)
   }
 }

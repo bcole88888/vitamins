@@ -58,6 +58,18 @@ export default function RootLayout({
                 >
                   Insights
                 </Link>
+                <Link
+                  href="/trends"
+                  className="text-gray-600 hover:text-gray-900 font-medium"
+                >
+                  Trends
+                </Link>
+                <Link
+                  href="/settings"
+                  className="text-gray-600 hover:text-gray-900 font-medium"
+                >
+                  Settings
+                </Link>
               </div>
             </div>
           </div>

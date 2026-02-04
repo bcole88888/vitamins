@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { DaySchedulePicker } from './DaySchedulePicker'
+import { ALL_DAYS } from '@/lib/schedule'
 
 interface Product {
   id: string
@@ -13,7 +15,7 @@ interface AddToRegimenModalProps {
   onClose: () => void
   products: Product[]
   existingProductIds: string[]
-  onAdd: (productId: string, quantity: number) => void
+  onAdd: (productId: string, quantity: number, scheduleDays: string) => void
 }
 
 export function AddToRegimenModal({
@@ -25,6 +27,7 @@ export function AddToRegimenModal({
 }: AddToRegimenModalProps) {
   const [selectedProductId, setSelectedProductId] = useState('')
   const [quantity, setQuantity] = useState(1)
+  const [scheduleDays, setScheduleDays] = useState(ALL_DAYS)
 
   if (!isOpen) return null
 
@@ -33,9 +36,10 @@ export function AddToRegimenModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (selectedProductId && quantity > 0) {
-      onAdd(selectedProductId, quantity)
+      onAdd(selectedProductId, quantity, scheduleDays)
       setSelectedProductId('')
       setQuantity(1)
+      setScheduleDays(ALL_DAYS)
       onClose()
     }
   }
@@ -83,6 +87,16 @@ export function AddToRegimenModal({
                 step="0.25"
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Schedule
+              </label>
+              <DaySchedulePicker
+                value={scheduleDays}
+                onChange={setScheduleDays}
               />
             </div>
 

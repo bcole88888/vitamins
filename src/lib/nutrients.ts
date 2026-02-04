@@ -162,3 +162,82 @@ export function isAboveUpperLimit(nutrientName: string, amount: number, unit: st
   const converted = convertUnit(amount, unit, rdi.unit, normalizeNutrientName(nutrientName))
   return converted.amount > rdi.upperLimit
 }
+
+// Nutrient interactions - known supplement interactions
+export interface NutrientInteraction {
+  nutrients: [string, string]
+  type: 'inhibits' | 'enhances' | 'caution'
+  description: string
+}
+
+export const NUTRIENT_INTERACTIONS: NutrientInteraction[] = [
+  {
+    nutrients: ['Calcium', 'Iron'],
+    type: 'inhibits',
+    description: 'Calcium can reduce iron absorption by up to 50%. Consider taking them at different times of day.',
+  },
+  {
+    nutrients: ['Zinc', 'Copper'],
+    type: 'inhibits',
+    description: 'High zinc intake can interfere with copper absorption. Balance is important for both minerals.',
+  },
+  {
+    nutrients: ['Vitamin C', 'Iron'],
+    type: 'enhances',
+    description: 'Vitamin C enhances iron absorption. Taking them together can improve iron uptake.',
+  },
+  {
+    nutrients: ['Vitamin D', 'Calcium'],
+    type: 'enhances',
+    description: 'Vitamin D is essential for calcium absorption. Taking them together is beneficial.',
+  },
+  {
+    nutrients: ['Vitamin K', 'Calcium'],
+    type: 'enhances',
+    description: 'Vitamin K helps direct calcium to bones and away from arteries.',
+  },
+  {
+    nutrients: ['Calcium', 'Magnesium'],
+    type: 'inhibits',
+    description: 'High calcium intake can compete with magnesium absorption. Consider spacing them out.',
+  },
+  {
+    nutrients: ['Vitamin E', 'Vitamin K'],
+    type: 'inhibits',
+    description: 'High doses of Vitamin E may interfere with Vitamin K activity, affecting blood clotting.',
+  },
+  {
+    nutrients: ['Iron', 'Zinc'],
+    type: 'inhibits',
+    description: 'Iron and zinc compete for absorption. Taking them together may reduce absorption of both.',
+  },
+]
+
+export interface InteractionWarning {
+  nutrient1: string
+  nutrient2: string
+  type: 'inhibits' | 'enhances' | 'caution'
+  description: string
+}
+
+export function checkInteractions(nutrientNames: string[]): InteractionWarning[] {
+  const warnings: InteractionWarning[] = []
+  const normalizedNames = nutrientNames.map(normalizeNutrientName)
+
+  for (const interaction of NUTRIENT_INTERACTIONS) {
+    const [n1, n2] = interaction.nutrients
+    const hasN1 = normalizedNames.includes(n1)
+    const hasN2 = normalizedNames.includes(n2)
+
+    if (hasN1 && hasN2) {
+      warnings.push({
+        nutrient1: n1,
+        nutrient2: n2,
+        type: interaction.type,
+        description: interaction.description,
+      })
+    }
+  }
+
+  return warnings
+}

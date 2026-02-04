@@ -4,8 +4,11 @@ import { useEffect, useState, useCallback } from 'react'
 import { UserSelector } from '@/components/UserSelector'
 import { RegimenChecklist } from '@/components/RegimenChecklist'
 import { AddToRegimenModal } from '@/components/AddToRegimenModal'
+import { NotificationBanner } from '@/components/NotificationBanner'
+import { DaySchedulePicker } from '@/components/DaySchedulePicker'
 import { RegimenChecklistItem, RegimenItem } from '@/types'
 import { formatDate, formatDateDisplay } from '@/lib/utils'
+import { getDayOfWeek, isScheduledForDay, getScheduleLabel, ALL_DAYS } from '@/lib/schedule'
 
 interface Product {
   id: string
@@ -33,7 +36,8 @@ export default function RegimenPage() {
   const [loading, setLoading] = useState(true)
   const [toggling, setToggling] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
-  const [editingItem, setEditingItem] = useState<{ id: string; quantity: number } | null>(null)
+  const [editingItem, setEditingItem] = useState<{ id: string; quantity: number; scheduleDays: string } | null>(null)
+  const [showTodayOnly, setShowTodayOnly] = useState(true)
 
   const fetchData = useCallback(async () => {
     if (!selectedUserId) {
@@ -142,7 +146,7 @@ export default function RegimenPage() {
     }
   }
 
-  const handleAddProduct = async (productId: string, quantity: number) => {
+  const handleAddProduct = async (productId: string, quantity: number, scheduleDays: string) => {
     const regimenId = await ensureRegimen()
     if (!regimenId) return
 
@@ -150,7 +154,7 @@ export default function RegimenPage() {
       await fetch('/api/regimen/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ regimenId, productId, quantity }),
+        body: JSON.stringify({ regimenId, productId, quantity, scheduleDays }),
       })
       await fetchData()
     } catch (error) {
@@ -167,17 +171,17 @@ export default function RegimenPage() {
     }
   }
 
-  const handleUpdateQuantity = async (itemId: string, quantity: number) => {
+  const handleUpdateItem = async (itemId: string, quantity: number, scheduleDays: string) => {
     try {
       await fetch('/api/regimen/items', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemId, quantity }),
+        body: JSON.stringify({ itemId, quantity, scheduleDays }),
       })
       setEditingItem(null)
       await fetchData()
     } catch (error) {
-      console.error('Error updating quantity:', error)
+      console.error('Error updating item:', error)
     }
   }
 
@@ -193,7 +197,9 @@ export default function RegimenPage() {
     setDate(formatDate(d))
   }
 
-  const checklistItems: RegimenChecklistItem[] = regimen?.items.map(item => {
+  const dayOfWeek = getDayOfWeek(date)
+
+  const allChecklistItems: RegimenChecklistItem[] = regimen?.items.map(item => {
     const intake = intakeLogs.find(log => log.productId === item.productId)
     return {
       id: item.id,
@@ -203,15 +209,23 @@ export default function RegimenPage() {
       servingUnit: item.product.servingUnit ?? undefined,
       quantity: item.quantity,
       sortOrder: item.sortOrder,
+      scheduleDays: item.scheduleDays || ALL_DAYS,
       isLogged: !!intake,
       intakeLogId: intake?.id,
     }
   }) || []
 
+  // Filter items by day schedule if showTodayOnly is true
+  const checklistItems = showTodayOnly
+    ? allChecklistItems.filter(item => isScheduledForDay(item.scheduleDays, dayOfWeek))
+    : allChecklistItems
+
   const existingProductIds = regimen?.items.map(item => item.productId) || []
 
   return (
     <div className="space-y-6">
+      <NotificationBanner userId={selectedUserId} />
+
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">My Regimen</h1>
@@ -220,7 +234,7 @@ export default function RegimenPage() {
         <UserSelector selectedUserId={selectedUserId} onSelect={setSelectedUserId} />
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <button
           onClick={goPrev}
           className="px-3 py-1 bg-gray-100 rounded hover:bg-gray-200"
@@ -245,6 +259,15 @@ export default function RegimenPage() {
           onChange={e => setDate(e.target.value)}
           className="ml-4 px-3 py-1 border rounded"
         />
+        <label className="flex items-center gap-2 ml-4 text-sm">
+          <input
+            type="checkbox"
+            checked={showTodayOnly}
+            onChange={e => setShowTodayOnly(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300"
+          />
+          <span className="text-gray-600">Scheduled for this day only</span>
+        </label>
       </div>
 
       {!selectedUserId ? (
@@ -280,28 +303,75 @@ export default function RegimenPage() {
               </button>
             </div>
 
-            {checklistItems.length === 0 ? (
+            {allChecklistItems.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 Your regimen is empty. Add products to create your daily routine.
               </div>
             ) : (
               <div className="space-y-2">
-                {checklistItems.map(item => (
+                {allChecklistItems.map(item => (
                   <div
                     key={item.id}
-                    className="flex items-center justify-between bg-gray-50 rounded-lg p-3"
+                    className="bg-gray-50 rounded-lg p-3"
                   >
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-800">
-                        {item.productName}
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-800">
+                          {item.productName}
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          {item.productBrand && (
+                            <span className="text-gray-500">{item.productBrand}</span>
+                          )}
+                          {item.scheduleDays !== ALL_DAYS && (
+                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                              {getScheduleLabel(item.scheduleDays)}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      {item.productBrand && (
-                        <div className="text-sm text-gray-500">{item.productBrand}</div>
-                      )}
+                      <div className="flex items-center gap-3">
+                        {editingItem?.id === item.id ? (
+                          <button
+                            onClick={() => handleUpdateItem(item.id, editingItem.quantity, editingItem.scheduleDays)}
+                            className="text-green-600 hover:text-green-800 text-sm"
+                          >
+                            Save
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setEditingItem({
+                              id: item.id,
+                              quantity: item.quantity,
+                              scheduleDays: item.scheduleDays
+                            })}
+                            className="text-sm text-blue-600 hover:text-blue-800"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        {editingItem?.id === item.id ? (
+                          <button
+                            onClick={() => setEditingItem(null)}
+                            className="text-gray-500 hover:text-gray-700 text-sm"
+                          >
+                            Cancel
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleRemoveItem(item.id)}
+                            className="text-red-500 hover:text-red-700 text-sm"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      {editingItem?.id === item.id ? (
-                        <div className="flex items-center gap-2">
+
+                    {editingItem?.id === item.id && (
+                      <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
+                        <div>
+                          <label className="block text-sm text-gray-600 mb-1">Quantity</label>
                           <input
                             type="number"
                             value={editingItem.quantity}
@@ -311,38 +381,22 @@ export default function RegimenPage() {
                             })}
                             min="0.25"
                             step="0.25"
-                            className="w-20 px-2 py-1 border rounded text-sm"
+                            className="w-24 px-2 py-1 border rounded text-sm"
                           />
-                          <button
-                            onClick={() => handleUpdateQuantity(item.id, editingItem.quantity)}
-                            className="text-green-600 hover:text-green-800 text-sm"
-                          >
-                            Save
-                          </button>
-                          <button
-                            onClick={() => setEditingItem(null)}
-                            className="text-gray-500 hover:text-gray-700 text-sm"
-                          >
-                            Cancel
-                          </button>
+                          <span className="ml-2 text-sm text-gray-500">{item.servingUnit || 'servings'}</span>
                         </div>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => setEditingItem({ id: item.id, quantity: item.quantity })}
-                            className="text-sm text-gray-500 hover:text-gray-700"
-                          >
-                            {item.quantity} {item.servingUnit || 'serving'}
-                          </button>
-                          <button
-                            onClick={() => handleRemoveItem(item.id)}
-                            className="text-red-500 hover:text-red-700 text-sm"
-                          >
-                            Remove
-                          </button>
-                        </>
-                      )}
-                    </div>
+                        <div>
+                          <label className="block text-sm text-gray-600 mb-1">Schedule</label>
+                          <DaySchedulePicker
+                            value={editingItem.scheduleDays}
+                            onChange={scheduleDays => setEditingItem({
+                              ...editingItem,
+                              scheduleDays,
+                            })}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
