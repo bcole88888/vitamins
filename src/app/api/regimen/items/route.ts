@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { apiError } from '@/lib/apiUtils'
+import { regimenItemCreateSchema, regimenItemUpdateSchema, parseBody } from '@/lib/validation'
 
 export async function POST(request: Request) {
   try {
-    const { regimenId, productId, quantity = 1, scheduleDays = '0,1,2,3,4,5,6' } = await request.json()
+    const parsed = parseBody(regimenItemCreateSchema, await request.json())
+    if (!parsed.success) return parsed.response
 
-    if (!regimenId || !productId) {
-      return apiError('regimenId and productId are required', 400)
-    }
+    const { regimenId, productId, quantity, scheduleDays } = parsed.data
 
     const [regimen, product] = await Promise.all([
       prisma.regimen.findUnique({ where: { id: regimenId } }),
@@ -59,11 +59,10 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const { itemId, quantity, sortOrder, scheduleDays } = await request.json()
+    const parsed = parseBody(regimenItemUpdateSchema, await request.json())
+    if (!parsed.success) return parsed.response
 
-    if (!itemId) {
-      return apiError('itemId is required', 400)
-    }
+    const { itemId, quantity, sortOrder, scheduleDays } = parsed.data
 
     const updateData: { quantity?: number; sortOrder?: number; scheduleDays?: string } = {}
     if (quantity !== undefined) updateData.quantity = quantity

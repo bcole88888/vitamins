@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { apiError } from '@/lib/apiUtils'
 import { calculateRdiPercent, normalizeNutrientName } from '@/lib/nutrients'
+import { utcToday, utcDateRange } from '@/lib/utils'
 
 export async function GET(request: Request) {
   try {
@@ -18,12 +19,12 @@ export async function GET(request: Request) {
       return apiError('period must be 7, 30, or 90', 400)
     }
 
-    // Calculate date range
-    const endDate = new Date()
-    endDate.setHours(23, 59, 59, 999)
-    const startDate = new Date()
-    startDate.setDate(startDate.getDate() - period + 1)
-    startDate.setHours(0, 0, 0, 0)
+    // Calculate date range in UTC
+    const todayStr = utcToday()
+    const startDateObj = new Date(todayStr + 'T00:00:00.000Z')
+    startDateObj.setUTCDate(startDateObj.getUTCDate() - period + 1)
+    const startStr = startDateObj.toISOString().split('T')[0]
+    const { gte: startDate, lte: endDate } = utcDateRange(startStr, todayStr)
 
     // Get all intake logs for the period
     const intakeLogs = await prisma.intakeLog.findMany({
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
     // Initialize all dates in the period
     for (let i = 0; i < period; i++) {
       const d = new Date(startDate)
-      d.setDate(d.getDate() + i)
+      d.setUTCDate(d.getUTCDate() + i)
       const dateKey = d.toISOString().split('T')[0]
       dataByDate.set(dateKey, new Map())
     }

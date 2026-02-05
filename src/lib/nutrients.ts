@@ -8,22 +8,14 @@ export const NUTRIENT_RDI: Record<string, { amount: number; unit: string; upperL
   'Vitamin D': { amount: 20, unit: 'mcg', upperLimit: 100 },
   'Vitamin E': { amount: 15, unit: 'mg', upperLimit: 1000 },
   'Vitamin K': { amount: 120, unit: 'mcg' },
-  'Vitamin B1': { amount: 1.2, unit: 'mg' },
   'Thiamin': { amount: 1.2, unit: 'mg' },
-  'Vitamin B2': { amount: 1.3, unit: 'mg' },
   'Riboflavin': { amount: 1.3, unit: 'mg' },
-  'Vitamin B3': { amount: 16, unit: 'mg', upperLimit: 35 },
   'Niacin': { amount: 16, unit: 'mg', upperLimit: 35 },
-  'Vitamin B5': { amount: 5, unit: 'mg' },
   'Pantothenic Acid': { amount: 5, unit: 'mg' },
   'Vitamin B6': { amount: 1.7, unit: 'mg', upperLimit: 100 },
-  'Vitamin B7': { amount: 30, unit: 'mcg' },
   'Biotin': { amount: 30, unit: 'mcg' },
-  'Vitamin B9': { amount: 400, unit: 'mcg', upperLimit: 1000 },
   'Folate': { amount: 400, unit: 'mcg', upperLimit: 1000 },
-  'Folic Acid': { amount: 400, unit: 'mcg', upperLimit: 1000 },
   'Vitamin B12': { amount: 2.4, unit: 'mcg' },
-  'Cobalamin': { amount: 2.4, unit: 'mcg' },
   'Choline': { amount: 550, unit: 'mg', upperLimit: 3500 },
 
   // Minerals
@@ -46,29 +38,49 @@ export const NUTRIENT_RDI: Record<string, { amount: number; unit: string; upperL
   'Fiber': { amount: 28, unit: 'g' },
 }
 
-// Map various nutrient names to standardized names
+// Map various nutrient names to standardized canonical names.
+// Each B vitamin has one canonical name; all alternate forms map to it.
 const NUTRIENT_ALIASES: Record<string, string> = {
   'vitamin-a': 'Vitamin A',
   'vitamin-c': 'Vitamin C',
   'vitamin-d': 'Vitamin D',
   'vitamin-e': 'Vitamin E',
   'vitamin-k': 'Vitamin K',
-  'vitamin-b1': 'Vitamin B1',
-  'vitamin-b2': 'Vitamin B2',
-  'vitamin-b3': 'Vitamin B3',
-  'vitamin-b5': 'Vitamin B5',
-  'vitamin-b6': 'Vitamin B6',
-  'vitamin-b7': 'Vitamin B7',
-  'vitamin-b9': 'Vitamin B9',
-  'vitamin-b12': 'Vitamin B12',
+
+  // B1 - canonical: Thiamin
+  'vitamin-b1': 'Thiamin',
   'thiamine': 'Thiamin',
+
+  // B2 - canonical: Riboflavin
+  'vitamin-b2': 'Riboflavin',
   'riboflavine': 'Riboflavin',
+
+  // B3 - canonical: Niacin
+  'vitamin-b3': 'Niacin',
   'niacine': 'Niacin',
+
+  // B5 - canonical: Pantothenic Acid
+  'vitamin-b5': 'Pantothenic Acid',
   'pantothenic-acid': 'Pantothenic Acid',
+
+  // B6
+  'vitamin-b6': 'Vitamin B6',
+
+  // B7 - canonical: Biotin
+  'vitamin-b7': 'Biotin',
   'biotine': 'Biotin',
+
+  // B9 - canonical: Folate
+  'vitamin-b9': 'Folate',
   'folates': 'Folate',
-  'folic-acid': 'Folic Acid',
-  'cobalamine': 'Cobalamin',
+  'folic-acid': 'Folate',
+
+  // B12
+  'vitamin-b12': 'Vitamin B12',
+  'cobalamine': 'Vitamin B12',
+  'cobalamin': 'Vitamin B12',
+
+  // Minerals
   'calcium': 'Calcium',
   'iron': 'Iron',
   'magnesium': 'Magnesium',
@@ -88,7 +100,7 @@ const NUTRIENT_ALIASES: Record<string, string> = {
 
 // Unit conversion factors to base units (mcg for vitamins, mg for minerals)
 const UNIT_CONVERSIONS: Record<string, Record<string, number>> = {
-  mcg: { mcg: 1, mg: 1000, g: 1000000, iu: 1 },
+  mcg: { mcg: 1, mg: 1000, g: 1000000 },
   mg: { mg: 1, g: 1000, mcg: 0.001 },
   g: { g: 1, mg: 0.001, mcg: 0.000001 },
 }
@@ -100,7 +112,23 @@ const IU_CONVERSIONS: Record<string, { factor: number; unit: string }> = {
   'Vitamin E': { factor: 0.67, unit: 'mg' }, // 1 IU = 0.67 mg d-alpha-tocopherol
 }
 
+// Exact-match aliases for names that arrive already in title case
+// (e.g., "Vitamin B1", "Folic Acid", "Cobalamin") but aren't canonical.
+const EXACT_ALIASES: Record<string, string> = {
+  'Vitamin B1': 'Thiamin',
+  'Vitamin B2': 'Riboflavin',
+  'Vitamin B3': 'Niacin',
+  'Vitamin B5': 'Pantothenic Acid',
+  'Vitamin B7': 'Biotin',
+  'Vitamin B9': 'Folate',
+  'Folic Acid': 'Folate',
+  'Cobalamin': 'Vitamin B12',
+}
+
 export function normalizeNutrientName(name: string): string {
+  // Check exact match first (handles "Vitamin B1", "Folic Acid", etc.)
+  if (EXACT_ALIASES[name]) return EXACT_ALIASES[name]
+  // Then check lowered/dashed form for Open Food Facts style names
   const lowered = name.toLowerCase().replace(/\s+/g, '-')
   return NUTRIENT_ALIASES[lowered] || name
 }

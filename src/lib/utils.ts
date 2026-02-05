@@ -6,6 +6,28 @@ export function formatDate(date: Date | string): string {
   return d.toISOString().split('T')[0]
 }
 
+// Build a UTC day range from a YYYY-MM-DD string. Avoids the bug where
+// new Date("2025-01-15") gives UTC midnight but setHours(0,0,0,0) shifts
+// to local midnight, potentially landing on the wrong calendar day.
+export function utcDayRange(dateStr: string): { gte: Date; lte: Date } {
+  return {
+    gte: new Date(dateStr + 'T00:00:00.000Z'),
+    lte: new Date(dateStr + 'T23:59:59.999Z'),
+  }
+}
+
+export function utcDateRange(startStr: string, endStr: string): { gte: Date; lte: Date } {
+  return {
+    gte: new Date(startStr + 'T00:00:00.000Z'),
+    lte: new Date(endStr + 'T23:59:59.999Z'),
+  }
+}
+
+// Get today's date as YYYY-MM-DD in UTC
+export function utcToday(): string {
+  return new Date().toISOString().split('T')[0]
+}
+
 export function formatDateDisplay(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date
   return d.toLocaleDateString('en-US', {

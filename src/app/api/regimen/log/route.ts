@@ -1,31 +1,16 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-
-interface LogItem {
-  productId: string
-  checked: boolean
-  quantity: number
-}
+import { utcDayRange } from '@/lib/utils'
+import { regimenLogSchema, parseBody } from '@/lib/validation'
 
 export async function POST(request: Request) {
   try {
-    const { userId, date, items } = await request.json() as {
-      userId: string
-      date: string
-      items: LogItem[]
-    }
+    const parsed = parseBody(regimenLogSchema, await request.json())
+    if (!parsed.success) return parsed.response
 
-    if (!userId || !date || !items || !Array.isArray(items)) {
-      return NextResponse.json(
-        { error: 'userId, date, and items array are required' },
-        { status: 400 }
-      )
-    }
+    const { userId, date, items } = parsed.data
 
-    const dayStart = new Date(date)
-    dayStart.setHours(0, 0, 0, 0)
-    const dayEnd = new Date(date)
-    dayEnd.setHours(23, 59, 59, 999)
+    const { gte: dayStart, lte: dayEnd } = utcDayRange(date)
 
     const results: { productId: string; logged: boolean; intakeId?: string }[] = []
 
@@ -49,7 +34,7 @@ export async function POST(request: Request) {
             userId,
             productId,
             quantity,
-            date: new Date(date),
+            date: new Date(date + 'T12:00:00.000Z'),
           },
         })
         results.push({ productId, logged: true, intakeId: intake.id })

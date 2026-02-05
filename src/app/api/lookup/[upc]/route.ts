@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server'
 import { lookupProduct } from '@/lib/openFoodFacts'
 import { prisma, productInclude } from '@/lib/prisma'
-import { apiError } from '@/lib/apiUtils'
+import { apiError, fetchWithTimeout } from '@/lib/apiUtils'
 import { ProductData } from '@/types'
 
 // Try UPCitemdb API (free tier, rate limited)
 async function lookupUPCitemdb(upc: string): Promise<ProductData | null> {
   try {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://api.upcitemdb.com/prod/trial/lookup?upc=${upc}`,
       {
         headers: {
@@ -17,7 +17,7 @@ async function lookupUPCitemdb(upc: string): Promise<ProductData | null> {
       }
     )
 
-    if (!response.ok) return null
+    if (!response || !response.ok) return null
 
     const data = await response.json()
 
@@ -44,7 +44,7 @@ async function lookupUPCitemdb(upc: string): Promise<ProductData | null> {
 async function searchOpenFoodFactsByName(name: string, brand?: string): Promise<ProductData | null> {
   try {
     const query = brand ? `${brand} ${name}` : name
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=5`,
       {
         headers: {
@@ -53,7 +53,7 @@ async function searchOpenFoodFactsByName(name: string, brand?: string): Promise<
       }
     )
 
-    if (!response.ok) return null
+    if (!response || !response.ok) return null
 
     const data = await response.json()
 
@@ -83,7 +83,7 @@ async function searchOpenFoodFactsByName(name: string, brand?: string): Promise<
 async function lookupNutritionix(upc: string): Promise<ProductData | null> {
   try {
     // Nutritionix track endpoint for UPC
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://trackapi.nutritionix.com/v2/search/item?upc=${upc}`,
       {
         headers: {
@@ -92,7 +92,7 @@ async function lookupNutritionix(upc: string): Promise<ProductData | null> {
       }
     )
 
-    if (!response.ok) return null
+    if (!response || !response.ok) return null
 
     const data = await response.json()
 
@@ -208,4 +208,3 @@ export async function GET(
     return apiError('Failed to lookup product', 500)
   }
 }
-

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { apiError } from '@/lib/apiUtils'
 import { isScheduledForDay, getDayOfWeek } from '@/lib/schedule'
+import { utcDayRange, utcToday } from '@/lib/utils'
 
 export async function GET(request: Request) {
   try {
@@ -14,14 +15,12 @@ export async function GET(request: Request) {
     }
 
     // Get the date to check (default to today)
-    const checkDate = dateParam ? new Date(dateParam + 'T12:00:00') : new Date()
+    const dateStr = dateParam || utcToday()
+    const checkDate = new Date(dateStr + 'T12:00:00.000Z')
     const dayOfWeek = getDayOfWeek(checkDate)
 
     // Get start and end of the day for intake check
-    const startOfDay = new Date(checkDate)
-    startOfDay.setHours(0, 0, 0, 0)
-    const endOfDay = new Date(checkDate)
-    endOfDay.setHours(23, 59, 59, 999)
+    const { gte: startOfDay, lte: endOfDay } = utcDayRange(dateStr)
 
     // Get user's regimen with items
     const regimens = await prisma.regimen.findMany({

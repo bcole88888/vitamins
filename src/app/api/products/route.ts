@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma, productInclude } from '@/lib/prisma'
-import { ProductData } from '@/types'
 import { apiError } from '@/lib/apiUtils'
+import { productCreateSchema, productUpdateSchema, parseBody } from '@/lib/validation'
 
 export async function GET(request: Request) {
   try {
@@ -37,11 +37,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const data: ProductData = await request.json()
+    const parsed = parseBody(productCreateSchema, await request.json())
+    if (!parsed.success) return parsed.response
 
-    if (!data.name) {
-      return apiError('Product name is required', 400)
-    }
+    const data = parsed.data
 
     // Check if product with this UPC already exists
     if (data.upc) {
@@ -54,17 +53,16 @@ export async function POST(request: Request) {
       }
     }
 
-    const nutrientsToCreate =
-      data.nutrients && Array.isArray(data.nutrients)
-        ? {
-            create: data.nutrients.map(n => ({
-              name: n.name,
-              amount: n.amount,
-              unit: n.unit,
-              dailyValuePercent: n.dailyValuePercent,
-            })),
-          }
-        : { create: [] }
+    const nutrientsToCreate = data.nutrients?.length
+      ? {
+          create: data.nutrients.map(n => ({
+            name: n.name,
+            amount: n.amount,
+            unit: n.unit,
+            dailyValuePercent: n.dailyValuePercent,
+          })),
+        }
+      : { create: [] as { name: string; amount: number; unit: string; dailyValuePercent?: number }[] }
 
     // Create new product with nutrients
     const product = await prisma.product.create({
@@ -74,7 +72,7 @@ export async function POST(request: Request) {
         brand: data.brand,
         servingSize: data.servingSize,
         servingUnit: data.servingUnit,
-        imageUrl: data.imageUrl,
+        imageUrl: data.imageUrl || undefined,
         nutrients: nutrientsToCreate,
       },
       include: productInclude,
@@ -88,15 +86,10 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const { id, nutrients } = await request.json()
+    const parsed = parseBody(productUpdateSchema, await request.json())
+    if (!parsed.success) return parsed.response
 
-    if (!id) {
-      return apiError('Product ID is required', 400)
-    }
-
-    if (!Array.isArray(nutrients)) {
-      return apiError('Nutrients must be an array', 400)
-    }
+    const { id, nutrients } = parsed.data
 
     // Delete existing nutrients and create new ones in a transaction
     await prisma.$transaction([
@@ -104,8 +97,8 @@ export async function PUT(request: Request) {
         where: { productId: id },
       }),
       ...nutrients
-        .filter((n: { name: string; amount: number; unit: string }) => n.name && n.amount !== undefined)
-        .map((n: { name: string; amount: number; unit: string; dailyValuePercent?: number }) =>
+        .filter(n => n.name && n.amount !== undefined)
+        .map(n =>
           prisma.nutrient.create({
             data: {
               productId: id,

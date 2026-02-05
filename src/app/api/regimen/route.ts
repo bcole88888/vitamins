@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { apiError } from '@/lib/apiUtils'
 import { isScheduledForDay } from '@/lib/schedule'
+import { regimenCreateSchema, parseBody } from '@/lib/validation'
 
 export async function GET(request: Request) {
   try {
@@ -53,11 +54,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { userId } = await request.json()
+    const parsed = parseBody(regimenCreateSchema, await request.json())
+    if (!parsed.success) return parsed.response
 
-    if (!userId) {
-      return apiError('userId is required', 400)
-    }
+    const { userId } = parsed.data
 
     const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user) {

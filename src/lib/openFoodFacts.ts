@@ -1,7 +1,11 @@
 import { ProductData, NutrientData } from '@/types'
 import { normalizeNutrientName } from './nutrients'
+import { fetchWithTimeout, TtlCache } from './apiUtils'
 
 const API_BASE = 'https://world.openfoodfacts.org/api/v0/product'
+
+// Cache product lookups for 30 minutes — product nutrient data rarely changes.
+const productCache = new TtlCache<ProductData | null>(30)
 
 // Mapping of Open Food Facts nutrient keys to readable names
 const NUTRIENT_KEY_MAP: Record<string, string> = {
@@ -65,20 +69,26 @@ export async function lookupProduct(upc: string): Promise<ProductData | null> {
     // Clean the UPC (remove dashes, spaces)
     const cleanUpc = upc.replace(/[-\s]/g, '')
 
-    const response = await fetch(`${API_BASE}/${cleanUpc}.json`, {
+    // Check cache first
+    const cached = productCache.get(cleanUpc)
+    if (cached !== undefined) return cached
+
+    const response = await fetchWithTimeout(`${API_BASE}/${cleanUpc}.json`, {
       headers: {
         'User-Agent': 'VitaminTracker/1.0 - Personal supplement tracking app',
       },
     })
 
-    if (!response.ok) {
-      console.error('Open Food Facts API error:', response.status)
+    if (!response || !response.ok) {
+      productCache.set(cleanUpc, null)
+      if (response) console.error('Open Food Facts API error:', response.status)
       return null
     }
 
     const data: OpenFoodFactsResponse = await response.json()
 
     if (data.status !== 1 || !data.product) {
+      productCache.set(cleanUpc, null)
       return null
     }
 
@@ -142,7 +152,7 @@ export async function lookupProduct(upc: string): Promise<ProductData | null> {
       }
     }
 
-    return {
+    const result: ProductData = {
       upc: cleanUpc,
       name: product.product_name || `Product ${cleanUpc}`,
       brand: product.brands,
@@ -151,6 +161,9 @@ export async function lookupProduct(upc: string): Promise<ProductData | null> {
       imageUrl: product.image_url,
       nutrients,
     }
+
+    productCache.set(cleanUpc, result)
+    return result
   } catch (error) {
     console.error('Error looking up product:', error)
     return null
@@ -160,7 +173,7 @@ export async function lookupProduct(upc: string): Promise<ProductData | null> {
 // Search products by name (fallback when UPC not found)
 export async function searchProducts(query: string, limit: number = 10): Promise<ProductData[]> {
   try {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=${limit}`,
       {
         headers: {
@@ -169,7 +182,7 @@ export async function searchProducts(query: string, limit: number = 10): Promise
       }
     )
 
-    if (!response.ok) {
+    if (!response || !response.ok) {
       return []
     }
 

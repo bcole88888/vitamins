@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { utcDayRange, utcDateRange } from '@/lib/utils'
+import { intakeCreateSchema, parseBody } from '@/lib/validation'
 
 export async function GET(request: Request) {
   try {
@@ -16,25 +18,9 @@ export async function GET(request: Request) {
     }
 
     if (date) {
-      // Get intakes for a specific day
-      const dayStart = new Date(date)
-      dayStart.setHours(0, 0, 0, 0)
-      const dayEnd = new Date(date)
-      dayEnd.setHours(23, 59, 59, 999)
-      where.date = {
-        gte: dayStart,
-        lte: dayEnd,
-      }
+      where.date = utcDayRange(date)
     } else if (startDate && endDate) {
-      // Get intakes for a date range
-      const start = new Date(startDate)
-      start.setHours(0, 0, 0, 0)
-      const end = new Date(endDate)
-      end.setHours(23, 59, 59, 999)
-      where.date = {
-        gte: start,
-        lte: end,
-      }
+      where.date = utcDateRange(startDate, endDate)
     }
 
     const intakes = await prisma.intakeLog.findMany({
@@ -59,14 +45,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { userId, productId, quantity = 1, date } = await request.json()
+    const parsed = parseBody(intakeCreateSchema, await request.json())
+    if (!parsed.success) return parsed.response
 
-    if (!userId || !productId) {
-      return NextResponse.json(
-        { error: 'userId and productId are required' },
-        { status: 400 }
-      )
-    }
+    const { userId, productId, quantity, date } = parsed.data
 
     // Verify user and product exist
     const [user, product] = await Promise.all([
@@ -87,7 +69,7 @@ export async function POST(request: Request) {
         userId,
         productId,
         quantity,
-        date: date ? new Date(date) : new Date(),
+        date: date ? new Date(date + 'T12:00:00.000Z') : new Date(),
       },
       include: {
         product: {

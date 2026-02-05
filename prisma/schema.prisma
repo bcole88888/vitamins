@@ -46,9 +46,9 @@ model Nutrient {
 model IntakeLog {
   id        String   @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   productId String
-  product   Product  @relation(fields: [productId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   date      DateTime @default(now())
   quantity  Float    @default(1)
   createdAt DateTime @default(now())

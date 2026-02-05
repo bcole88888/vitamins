@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { apiError } from '@/lib/apiUtils'
+import { notificationPrefSchema, parseBody } from '@/lib/validation'
 
 export async function GET(request: Request) {
   try {
@@ -33,11 +34,10 @@ export async function GET(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const { userId, enabled, reminderTime } = await request.json()
+    const parsed = parseBody(notificationPrefSchema, await request.json())
+    if (!parsed.success) return parsed.response
 
-    if (!userId) {
-      return apiError('userId is required', 400)
-    }
+    const { userId, enabled, reminderTime } = parsed.data
 
     // Verify user exists
     const user = await prisma.user.findUnique({
@@ -46,11 +46,6 @@ export async function PUT(request: Request) {
 
     if (!user) {
       return apiError('User not found', 404)
-    }
-
-    // Validate reminderTime format if provided
-    if (reminderTime && !/^\d{2}:\d{2}$/.test(reminderTime)) {
-      return apiError('reminderTime must be in HH:MM format', 400)
     }
 
     // Upsert notification preference

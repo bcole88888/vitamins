@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { userCreateSchema, parseBody } from '@/lib/validation'
 
 export async function GET() {
   try {
@@ -15,14 +16,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { name } = await request.json()
-
-    if (!name || typeof name !== 'string') {
-      return NextResponse.json({ error: 'Name is required' }, { status: 400 })
-    }
+    const parsed = parseBody(userCreateSchema, await request.json())
+    if (!parsed.success) return parsed.response
 
     const user = await prisma.user.create({
-      data: { name },
+      data: { name: parsed.data.name },
     })
 
     return NextResponse.json(user, { status: 201 })

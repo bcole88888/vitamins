@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { ProductData, NutrientData } from '@/types'
 import { normalizeNutrientName } from '@/lib/nutrients'
+import { fetchWithTimeout } from '@/lib/apiUtils'
+import { websearchSchema, parseBody } from '@/lib/validation'
 
 interface WebSearchResult {
   product: ProductData | null
@@ -15,20 +17,14 @@ interface WebSearchResult {
 // Fetch and parse a webpage for supplement facts
 async function fetchAndParseSupplementFacts(url: string): Promise<NutrientData[]> {
   try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 5000)
-
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; VitaminTracker/1.0)',
         'Accept': 'text/html',
       },
-      signal: controller.signal,
     })
 
-    clearTimeout(timeout)
-
-    if (!response.ok) return []
+    if (!response || !response.ok) return []
 
     const html = await response.text()
     return parseNutrientsFromHtml(html)
@@ -131,7 +127,7 @@ function parseNutrientsFromHtml(html: string): NutrientData[] {
 // Search using DuckDuckGo HTML search
 async function searchDuckDuckGo(query: string): Promise<Array<{ title: string; url: string; snippet: string }>> {
   try {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
       {
         headers: {
@@ -141,7 +137,7 @@ async function searchDuckDuckGo(query: string): Promise<Array<{ title: string; u
       }
     )
 
-    if (!response.ok) return []
+    if (!response || !response.ok) return []
 
     const html = await response.text()
     const results: Array<{ title: string; url: string; snippet: string }> = []
@@ -199,7 +195,7 @@ async function searchDuckDuckGo(query: string): Promise<Array<{ title: string; u
 // Alternative: Use Bing search
 async function searchBing(query: string): Promise<Array<{ title: string; url: string; snippet: string }>> {
   try {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=en`,
       {
         headers: {
@@ -209,7 +205,7 @@ async function searchBing(query: string): Promise<Array<{ title: string; url: st
       }
     )
 
-    if (!response.ok) return []
+    if (!response || !response.ok) return []
 
     const html = await response.text()
     const results: Array<{ title: string; url: string; snippet: string }> = []
@@ -315,7 +311,7 @@ function filterNutrientsByExpected(
 // Look up product info from UPCitemdb
 async function lookupUPCitemdb(upc: string): Promise<{ name: string; brand?: string; imageUrl?: string } | null> {
   try {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://api.upcitemdb.com/prod/trial/lookup?upc=${upc}`,
       {
         headers: {
@@ -325,7 +321,7 @@ async function lookupUPCitemdb(upc: string): Promise<{ name: string; brand?: str
       }
     )
 
-    if (!response.ok) return null
+    if (!response || !response.ok) return null
 
     const data = await response.json()
 
@@ -347,14 +343,10 @@ async function lookupUPCitemdb(upc: string): Promise<{ name: string; brand?: str
 
 export async function POST(request: Request) {
   try {
-    let { upc, query, productName, brand } = await request.json()
+    const parsed = parseBody(websearchSchema, await request.json())
+    if (!parsed.success) return parsed.response
 
-    if (!upc && !query && !productName) {
-      return NextResponse.json(
-        { error: 'UPC, query, or productName is required' },
-        { status: 400 }
-      )
-    }
+    let { upc, query, productName, brand } = parsed.data
 
     // If we have a UPC but generic/missing product name, look it up
     let imageUrl: string | undefined
