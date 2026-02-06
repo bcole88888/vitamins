@@ -3,26 +3,9 @@ import { PrismaClient } from '@prisma/client'
 const prisma = new PrismaClient()
 
 async function main() {
-  // Create default users (a married couple)
-  const userA = await prisma.user.upsert({
-    where: { id: 'user-a' },
-    update: { name: 'Brian' },
-    create: {
-      id: 'user-a',
-      name: 'Brian',
-    },
-  })
-
-  const userB = await prisma.user.upsert({
-    where: { id: 'user-b' },
-    update: { name: 'Amanda' },
-    create: {
-      id: 'user-b',
-      name: 'Amanda',
-    },
-  })
-
-  console.log('Created users:', { userA, userB })
+  // No default users — users are created via the UI.
+  const count = await prisma.user.count()
+  console.log(`Database ready. ${count} user(s) exist.`)
 }
 
 main()
