@@ -67,16 +67,19 @@ export function UserSelector({ selectedUserId, onSelect, showAll = true }: UserS
     }
   }
 
+  const pillBase = 'px-4 py-2 rounded-full text-sm font-medium transition-all'
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       {showAll && (
         <button
           onClick={() => onSelect(null)}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+          className={pillBase}
+          style={
             selectedUserId === null
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
+              ? { background: 'var(--accent)', color: '#0f0f0e' }
+              : { background: 'var(--bg-surface)', color: 'var(--text-secondary)', border: '1px solid var(--border-warm)' }
+          }
         >
           All
         </button>
@@ -86,11 +89,12 @@ export function UserSelector({ selectedUserId, onSelect, showAll = true }: UserS
         <div key={user.id} className="relative group flex items-center">
           <button
             onClick={() => onSelect(user.id)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={pillBase}
+            style={
               selectedUserId === user.id
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+                ? { background: 'var(--accent)', color: '#0f0f0e' }
+                : { background: 'var(--bg-surface)', color: 'var(--text-secondary)', border: '1px solid var(--border-warm)' }
+            }
           >
             {user.name}
           </button>
@@ -99,13 +103,16 @@ export function UserSelector({ selectedUserId, onSelect, showAll = true }: UserS
             <div className="flex items-center gap-1 ml-1">
               <button
                 onClick={() => handleDelete(user.id)}
-                className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                className="px-2 py-1 text-xs rounded-full font-medium transition-colors"
+                style={{ background: 'var(--danger)', color: '#fff' }}
+                aria-label={`Confirm delete ${user.name}`}
               >
                 Delete
               </button>
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                className="px-2 py-1 text-xs rounded-full font-medium transition-colors"
+                style={{ background: 'var(--bg-surface)', color: 'var(--text-secondary)', border: '1px solid var(--border-warm)' }}
               >
                 Cancel
               </button>
@@ -113,8 +120,11 @@ export function UserSelector({ selectedUserId, onSelect, showAll = true }: UserS
           ) : (
             <button
               onClick={() => setConfirmDelete(user.id)}
-              className="ml-1 w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
-              title={`Remove ${user.name}`}
+              className="ml-1 w-5 h-5 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all text-xs"
+              style={{ color: 'var(--text-muted)' }}
+              onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'var(--danger-muted)' }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent' }}
+              aria-label={`Remove ${user.name}`}
             >
               x
             </button>
@@ -133,19 +143,26 @@ export function UserSelector({ selectedUserId, onSelect, showAll = true }: UserS
             onChange={e => setNewName(e.target.value)}
             placeholder="Name"
             autoFocus
-            className="px-3 py-2 border rounded-lg text-sm w-32 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 rounded-full text-sm w-32 focus:outline-none focus:ring-1"
+            style={{
+              background: 'var(--bg-surface)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-warm-strong)',
+            }}
           />
           <button
             type="submit"
             disabled={!newName.trim()}
-            className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+            className="px-3 py-2 rounded-full text-sm font-medium transition-colors disabled:opacity-40"
+            style={{ background: 'var(--accent)', color: '#0f0f0e' }}
           >
             Add
           </button>
           <button
             type="button"
             onClick={() => { setAdding(false); setNewName('') }}
-            className="px-2 py-2 text-gray-500 hover:text-gray-700 text-sm"
+            className="px-2 py-2 text-sm transition-colors"
+            style={{ color: 'var(--text-muted)' }}
           >
             Cancel
           </button>
@@ -153,7 +170,14 @@ export function UserSelector({ selectedUserId, onSelect, showAll = true }: UserS
       ) : (
         <button
           onClick={() => setAdding(true)}
-          className="w-9 h-9 flex items-center justify-center rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors text-lg"
+          className="w-9 h-9 flex items-center justify-center rounded-full transition-all text-lg"
+          style={{
+            border: '1px dashed var(--accent)',
+            color: 'var(--accent)',
+            background: 'transparent',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent-muted)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
           title="Add user"
         >
           +

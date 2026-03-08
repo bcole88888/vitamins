@@ -1,10 +1,16 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import { ProductCard } from '@/components/ProductCard'
 import { UserSelector } from '@/components/UserSelector'
 import { ProductData } from '@/types'
 import { useRouter } from 'next/navigation'
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout'
+
+const BarcodeScanner = dynamic(() => import('@/components/BarcodeScanner'), {
+  ssr: false,
+})
 
 interface SavedProduct extends ProductData {
   id: string
@@ -13,11 +19,12 @@ interface SavedProduct extends ProductData {
 export default function AddSupplementPage() {
   const router = useRouter()
   const [upc, setUpc] = useState('')
+  const [showScanner, setShowScanner] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [quantity, setQuantity] = useState(1)
   const [lookupResult, setLookupResult] = useState<ProductData | null>(null)
-  const [searchResults, setSearchResults] = useState<ProductData[]>([])
+  const [searchResults, setSearchResults] = useState<(ProductData & { source?: string })[]>([])
   const [savedProducts, setSavedProducts] = useState<SavedProduct[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -45,7 +52,7 @@ export default function AddSupplementPage() {
 
   // Load saved products
   useEffect(() => {
-    fetch('/api/products')
+    fetchWithTimeout('/api/products')
       .then(res => res.json())
       .then(data => setSavedProducts(data.data || []))
       .catch(console.error)
@@ -54,7 +61,7 @@ export default function AddSupplementPage() {
   // Set default user
   useEffect(() => {
     if (!selectedUserId) {
-      fetch('/api/users')
+      fetchWithTimeout('/api/users')
         .then(res => res.json())
         .then(users => {
           if (users.length > 0) {
@@ -70,7 +77,7 @@ export default function AddSupplementPage() {
     setWebSearchResults([])
 
     try {
-      const res = await fetch('/api/lookup/websearch', {
+      const res = await fetchWithTimeout('/api/lookup/websearch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -104,8 +111,9 @@ export default function AddSupplementPage() {
     }
   }
 
-  const handleLookup = async () => {
-    if (!upc.trim()) return
+  const handleLookup = async (lookupUpc?: string) => {
+    const finalUpc = (lookupUpc || upc).trim()
+    if (!finalUpc) return
 
     setLoading(true)
     setError('')
@@ -114,15 +122,16 @@ export default function AddSupplementPage() {
     setManualEntry(false)
     setManualNutrients([])
     setShowNutrientForm(false)
+    setShowScanner(false)
 
     try {
-      const res = await fetch(`/api/lookup/${encodeURIComponent(upc.trim())}`)
+      const res = await fetchWithTimeout(`/api/lookup/${encodeURIComponent(finalUpc)}`)
       const data = await res.json()
 
       if (!res.ok) {
         // Product not found in any database, try web search
         setError('')
-        await handleWebSearch(upc.trim())
+        await handleWebSearch(finalUpc)
         return
       }
 
@@ -167,7 +176,7 @@ export default function AddSupplementPage() {
     setSearchResults([])
 
     try {
-      const res = await fetch(`/api/lookup/search`, {
+      const res = await fetchWithTimeout(`/api/lookup/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: searchQuery.trim() }),
@@ -214,7 +223,7 @@ export default function AddSupplementPage() {
 
     try {
       // First, save the product to our database
-      const productRes = await fetch('/api/products', {
+      const productRes = await fetchWithTimeout('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(productWithNutrients),
@@ -227,7 +236,7 @@ export default function AddSupplementPage() {
       }
 
       // Then log the intake
-      const intakeRes = await fetch('/api/intake', {
+      const intakeRes = await fetchWithTimeout('/api/intake', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -251,7 +260,7 @@ export default function AddSupplementPage() {
       setShowNutrientForm(false)
 
       // Refresh saved products
-      const productsRes = await fetch('/api/products')
+      const productsRes = await fetchWithTimeout('/api/products')
       const productsData = await productsRes.json()
       setSavedProducts(productsData.data || [])
     } catch (err) {
@@ -269,7 +278,7 @@ export default function AddSupplementPage() {
     }
 
     try {
-      const res = await fetch('/api/intake', {
+      const res = await fetchWithTimeout('/api/intake', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -324,9 +333,36 @@ export default function AddSupplementPage() {
 
       {/* UPC Lookup */}
       <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-semibold mb-4">Lookup by UPC / Barcode</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Lookup by UPC / Barcode</h2>
+          <button
+            onClick={() => setShowScanner(!showScanner)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              showScanner
+                ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+            }`}
+          >
+            {showScanner ? 'Close Scanner' : 'Scan Barcode'}
+          </button>
+        </div>
+
+        {showScanner && (
+          <div className="mb-6">
+            <BarcodeScanner
+              onScan={scannedUpc => {
+                setUpc(scannedUpc)
+                handleLookup(scannedUpc)
+              }}
+              onError={err => setError(`Scanner error: ${err}`)}
+            />
+          </div>
+        )}
+
         <div className="flex gap-2">
+          <label className="sr-only" htmlFor="upc-input">UPC Code</label>
           <input
+            id="upc-input"
             type="text"
             value={upc}
             onChange={e => setUpc(e.target.value)}
@@ -335,7 +371,7 @@ export default function AddSupplementPage() {
             onKeyDown={e => e.key === 'Enter' && handleLookup()}
           />
           <button
-            onClick={handleLookup}
+            onClick={() => handleLookup()}
             disabled={loading || webSearching}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
@@ -442,21 +478,27 @@ export default function AddSupplementPage() {
 
                 {manualNutrients.map((nutrient, index) => (
                   <div key={index} className="flex gap-2 items-center">
+                    <label className="sr-only" htmlFor={`nutrient-name-${index}`}>Nutrient name</label>
                     <input
+                      id={`nutrient-name-${index}`}
                       type="text"
                       value={nutrient.name}
                       onChange={e => updateManualNutrient(index, 'name', e.target.value)}
                       placeholder="Nutrient name (e.g., Vitamin D3)"
                       className="flex-1 px-3 py-2 border rounded text-sm"
                     />
+                    <label className="sr-only" htmlFor={`nutrient-amount-${index}`}>Amount</label>
                     <input
+                      id={`nutrient-amount-${index}`}
                       type="number"
                       value={nutrient.amount}
                       onChange={e => updateManualNutrient(index, 'amount', e.target.value)}
                       placeholder="Amount"
                       className="w-24 px-3 py-2 border rounded text-sm"
                     />
+                    <label className="sr-only" htmlFor={`nutrient-unit-${index}`}>Unit</label>
                     <select
+                      id={`nutrient-unit-${index}`}
                       value={nutrient.unit}
                       onChange={e => updateManualNutrient(index, 'unit', e.target.value)}
                       className="w-20 px-2 py-2 border rounded text-sm"
@@ -470,6 +512,7 @@ export default function AddSupplementPage() {
                     <button
                       onClick={() => removeManualNutrient(index)}
                       className="text-red-500 hover:text-red-700 px-2"
+                      aria-label={`Remove ${nutrient.name || 'nutrient'}`}
                     >
                       ✕
                     </button>
@@ -520,7 +563,9 @@ export default function AddSupplementPage() {
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-lg font-semibold mb-4">Search by Name</h2>
         <div className="flex gap-2">
+          <label className="sr-only" htmlFor="search-input">Search supplements</label>
           <input
+            id="search-input"
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
@@ -545,13 +590,24 @@ export default function AddSupplementPage() {
                 className="flex items-center justify-between p-3 bg-gray-50 rounded cursor-pointer hover:bg-gray-100"
                 onClick={() => product.upc && setUpc(product.upc)}
               >
-                <div>
-                  <p className="font-medium">{product.name}</p>
-                  {product.brand && (
-                    <p className="text-sm text-gray-500">{product.brand}</p>
+                <div className="flex items-center gap-2">
+                  <div>
+                    <p className="font-medium">{product.name}</p>
+                    {product.brand && (
+                      <p className="text-sm text-gray-500">{product.brand}</p>
+                    )}
+                  </div>
+                  {product.source && (
+                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                      product.source === 'dsld'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-orange-100 text-orange-700'
+                    }`}>
+                      {product.source === 'dsld' ? 'DSLD' : 'Open Food Facts'}
+                    </span>
                   )}
                 </div>
-                <span className="text-blue-600 text-sm">Click to lookup →</span>
+                <span className="text-blue-600 text-sm whitespace-nowrap">Click to lookup →</span>
               </div>
             ))}
           </div>

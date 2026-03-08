@@ -7,7 +7,9 @@ import { AddToRegimenModal } from '@/components/AddToRegimenModal'
 import { NotificationBanner } from '@/components/NotificationBanner'
 import { DaySchedulePicker } from '@/components/DaySchedulePicker'
 import { RegimenChecklistItem, RegimenItem } from '@/types'
-import { formatDate, formatDateDisplay } from '@/lib/utils'
+import { formatDateDisplay } from '@/lib/utils'
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout'
+import { useDateNav } from '@/hooks/useDateNav'
 import { getDayOfWeek, isScheduledForDay, getScheduleLabel, ALL_DAYS } from '@/lib/schedule'
 
 interface Product {
@@ -25,18 +27,19 @@ interface Regimen {
 interface IntakeLog {
   id: string
   productId: string
+  timeOfDay: string
 }
 
 export default function RegimenPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
-  const [date, setDate] = useState(formatDate(new Date()))
+  const { date, setDate, goToday, goPrev, goNext } = useDateNav()
   const [regimen, setRegimen] = useState<Regimen | null>(null)
   const [intakeLogs, setIntakeLogs] = useState<IntakeLog[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [toggling, setToggling] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
-  const [editingItem, setEditingItem] = useState<{ id: string; quantity: number; scheduleDays: string } | null>(null)
+  const [editingItem, setEditingItem] = useState<{ id: string; quantity: number; scheduleDays: string; timeOfDay: string } | null>(null)
   const [showTodayOnly, setShowTodayOnly] = useState(true)
 
   const fetchData = useCallback(async () => {
@@ -50,9 +53,9 @@ export default function RegimenPage() {
     setLoading(true)
     try {
       const [regimensRes, intakesRes, productsRes] = await Promise.all([
-        fetch(`/api/regimen?userId=${selectedUserId}`),
-        fetch(`/api/intake?userId=${selectedUserId}&date=${date}`),
-        fetch('/api/products'),
+        fetchWithTimeout(`/api/regimen?userId=${selectedUserId}`),
+        fetchWithTimeout(`/api/intake?userId=${selectedUserId}&date=${date}`),
+        fetchWithTimeout('/api/products'),
       ])
 
       const regimensData = await regimensRes.json()
@@ -60,9 +63,10 @@ export default function RegimenPage() {
       const productsData = await productsRes.json()
 
       setRegimen(regimensData[0] || null)
-      setIntakeLogs(intakesData.map((i: { id: string; productId: string }) => ({
+      setIntakeLogs(intakesData.map((i: { id: string; productId: string; timeOfDay: string }) => ({
         id: i.id,
         productId: i.productId,
+        timeOfDay: i.timeOfDay,
       })))
       setProducts(productsData.data || [])
     } catch (error) {
@@ -95,7 +99,7 @@ export default function RegimenPage() {
     }
   }
 
-  const handleToggle = async (productId: string, checked: boolean, quantity: number) => {
+  const handleToggle = async (productId: string, checked: boolean, quantity: number, timeOfDay: string) => {
     if (!selectedUserId) return
 
     setToggling(true)
@@ -106,7 +110,7 @@ export default function RegimenPage() {
         body: JSON.stringify({
           userId: selectedUserId,
           date,
-          items: [{ productId, checked, quantity }],
+          items: [{ productId, checked, quantity, timeOfDay }],
         }),
       })
       await fetchData()
@@ -135,6 +139,7 @@ export default function RegimenPage() {
             productId: item.productId,
             checked: true,
             quantity: item.quantity,
+            timeOfDay: item.timeOfDay,
           })),
         }),
       })
@@ -146,7 +151,7 @@ export default function RegimenPage() {
     }
   }
 
-  const handleAddProduct = async (productId: string, quantity: number, scheduleDays: string) => {
+  const handleAddProduct = async (productId: string, quantity: number, scheduleDays: string, timeOfDay: string) => {
     const regimenId = await ensureRegimen()
     if (!regimenId) return
 
@@ -154,7 +159,7 @@ export default function RegimenPage() {
       await fetch('/api/regimen/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ regimenId, productId, quantity, scheduleDays }),
+        body: JSON.stringify({ regimenId, productId, quantity, scheduleDays, timeOfDay }),
       })
       await fetchData()
     } catch (error) {
@@ -171,12 +176,12 @@ export default function RegimenPage() {
     }
   }
 
-  const handleUpdateItem = async (itemId: string, quantity: number, scheduleDays: string) => {
+  const handleUpdateItem = async (itemId: string, quantity: number, scheduleDays: string, timeOfDay: string) => {
     try {
       await fetch('/api/regimen/items', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemId, quantity, scheduleDays }),
+        body: JSON.stringify({ itemId, quantity, scheduleDays, timeOfDay }),
       })
       setEditingItem(null)
       await fetchData()
@@ -185,22 +190,12 @@ export default function RegimenPage() {
     }
   }
 
-  const goToday = () => setDate(formatDate(new Date()))
-  const goPrev = () => {
-    const d = new Date(date)
-    d.setDate(d.getDate() - 1)
-    setDate(formatDate(d))
-  }
-  const goNext = () => {
-    const d = new Date(date)
-    d.setDate(d.getDate() + 1)
-    setDate(formatDate(d))
-  }
-
   const dayOfWeek = getDayOfWeek(date)
 
   const allChecklistItems: RegimenChecklistItem[] = regimen?.items.map(item => {
-    const intake = intakeLogs.find(log => log.productId === item.productId)
+    const intake = intakeLogs.find(
+      log => log.productId === item.productId && log.timeOfDay === item.timeOfDay
+    )
     return {
       id: item.id,
       productId: item.productId,
@@ -210,6 +205,7 @@ export default function RegimenPage() {
       quantity: item.quantity,
       sortOrder: item.sortOrder,
       scheduleDays: item.scheduleDays || ALL_DAYS,
+      timeOfDay: item.timeOfDay,
       isLogged: !!intake,
       intakeLogId: intake?.id,
     }
@@ -253,7 +249,9 @@ export default function RegimenPage() {
         >
           Next
         </button>
+        <label className="sr-only" htmlFor="regimen-date">Select date</label>
         <input
+          id="regimen-date"
           type="date"
           value={date}
           onChange={e => setDate(e.target.value)}
@@ -320,6 +318,9 @@ export default function RegimenPage() {
                           {item.productName}
                         </div>
                         <div className="flex items-center gap-2 text-sm">
+                          <span className="text-blue-600 font-semibold text-xs uppercase">
+                            {item.timeOfDay}
+                          </span>
                           {item.productBrand && (
                             <span className="text-gray-500">{item.productBrand}</span>
                           )}
@@ -333,7 +334,7 @@ export default function RegimenPage() {
                       <div className="flex items-center gap-3">
                         {editingItem?.id === item.id ? (
                           <button
-                            onClick={() => handleUpdateItem(item.id, editingItem.quantity, editingItem.scheduleDays)}
+                            onClick={() => handleUpdateItem(item.id, editingItem.quantity, editingItem.scheduleDays, editingItem.timeOfDay)}
                             className="text-green-600 hover:text-green-800 text-sm"
                           >
                             Save
@@ -343,7 +344,8 @@ export default function RegimenPage() {
                             onClick={() => setEditingItem({
                               id: item.id,
                               quantity: item.quantity,
-                              scheduleDays: item.scheduleDays
+                              scheduleDays: item.scheduleDays,
+                              timeOfDay: item.timeOfDay
                             })}
                             className="text-sm text-blue-600 hover:text-blue-800"
                           >
@@ -386,6 +388,23 @@ export default function RegimenPage() {
                           <span className="ml-2 text-sm text-gray-500">{item.servingUnit || 'servings'}</span>
                         </div>
                         <div>
+                          <label className="block text-sm text-gray-600 mb-1">Time of Day</label>
+                          <select
+                            value={editingItem.timeOfDay}
+                            onChange={e => setEditingItem({
+                              ...editingItem,
+                              timeOfDay: e.target.value,
+                            })}
+                            className="w-full px-2 py-1 border rounded text-sm"
+                          >
+                            <option value="ANYTIME">Anytime</option>
+                            <option value="MORNING">Morning</option>
+                            <option value="AFTERNOON">Afternoon</option>
+                            <option value="EVENING">Evening</option>
+                            <option value="NIGHT">Night</option>
+                          </select>
+                        </div>
+                        <div>
                           <label className="block text-sm text-gray-600 mb-1">Schedule</label>
                           <DaySchedulePicker
                             value={editingItem.scheduleDays}
@@ -409,7 +428,6 @@ export default function RegimenPage() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         products={products}
-        existingProductIds={existingProductIds}
         onAdd={handleAddProduct}
       />
     </div>

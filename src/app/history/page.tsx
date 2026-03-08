@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { UserSelector } from '@/components/UserSelector'
 import { IntakeList } from '@/components/IntakeList'
 import { formatDate, formatDateDisplay } from '@/lib/utils'
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout'
 
 interface Intake {
   id: string
@@ -39,7 +40,7 @@ export default function HistoryPage() {
     setLoading(true)
     try {
       const userParam = selectedUserId ? `&userId=${selectedUserId}` : ''
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `/api/intake?startDate=${startDate}&endDate=${endDate}${userParam}`
       )
       const intakes: Intake[] = await res.json()
@@ -117,14 +118,18 @@ export default function HistoryPage() {
             </button>
           </div>
           <div className="flex items-center gap-2">
+            <label className="sr-only" htmlFor="history-start-date">Start date</label>
             <input
+              id="history-start-date"
               type="date"
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
               className="px-3 py-1 border rounded"
             />
             <span className="text-gray-500">to</span>
+            <label className="sr-only" htmlFor="history-end-date">End date</label>
             <input
+              id="history-end-date"
               type="date"
               value={endDate}
               onChange={e => setEndDate(e.target.value)}

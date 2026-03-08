@@ -11,244 +11,168 @@ export async function POST(request: Request) {
       return apiError('Invalid export data format', 400)
     }
 
-    // Find or create user
-    let user = await prisma.user.findFirst({
-      where: { name: data.user.name },
-    })
-
-    if (!user) {
-      user = await prisma.user.create({
-        data: { name: data.user.name },
+    const result = await prisma.$transaction(async (tx) => {
+      // Find or create user
+      let user = await tx.user.findFirst({
+        where: { name: data.user.name },
       })
-    }
 
-    // Map old product IDs to new ones
-    const productIdMap = new Map<string, string>()
-
-    // Import products
-    for (const productData of data.products) {
-      // Check if product already exists by UPC or name+brand
-      let existingProduct = null
-
-      if (productData.upc) {
-        existingProduct = await prisma.product.findUnique({
-          where: { upc: productData.upc },
+      if (!user) {
+        user = await tx.user.create({
+          data: { name: data.user.name },
         })
       }
 
-      if (!existingProduct) {
-        existingProduct = await prisma.product.findFirst({
-          where: {
-            name: productData.name,
-            brand: productData.brand || null,
-          },
-        })
-      }
+      // Build a map from product key (name+brand) to new product ID
+      const productIdMap = new Map<string, string>()
 
-      if (existingProduct) {
-        // Map the imported productId to existing product
-        // We need to find the original ID from the regimens/intakes
-        const originalIds = [
-          ...data.regimens.flatMap(r => r.items.map(i => i.productId)),
-          ...data.intakeLogs.map(i => i.productId),
-        ]
-        // Find matching product by comparing names
-        const matchingProducts = data.products.filter(
-          p => p.name === productData.name && p.brand === productData.brand
-        )
-        // Since we're iterating through products, we map this product
-        for (const regimen of data.regimens) {
-          for (const item of regimen.items) {
-            const matchingProduct = data.products.find(p => {
-              const idx = data.products.indexOf(p)
-              return data.products.findIndex(prod =>
-                prod.name === productData.name && prod.brand === productData.brand
-              ) === data.products.indexOf(productData)
-            })
-          }
+      // Import products
+      for (const productData of data.products) {
+        const key = productData.name + (productData.brand || '')
+
+        // Check if product already exists by UPC or name+brand
+        let existingProduct = null
+
+        if (productData.upc) {
+          existingProduct = await tx.product.findUnique({
+            where: { upc: productData.upc },
+          })
         }
-        productIdMap.set(productData.name + (productData.brand || ''), existingProduct.id)
-      } else {
-        // Create new product with nutrients
-        const newProduct = await prisma.product.create({
-          data: {
-            upc: productData.upc,
-            name: productData.name,
-            brand: productData.brand,
-            servingSize: productData.servingSize,
-            servingUnit: productData.servingUnit,
-            imageUrl: productData.imageUrl,
-            nutrients: {
-              create: productData.nutrients.map(n => ({
-                name: n.name,
-                amount: n.amount,
-                unit: n.unit,
-                dailyValuePercent: n.dailyValuePercent,
-              })),
-            },
-          },
-        })
-        productIdMap.set(productData.name + (productData.brand || ''), newProduct.id)
-      }
-    }
 
-    // Helper to get product ID from import data
-    const getProductId = (originalProductId: string): string | null => {
-      // Find the product in the export data
-      const originalProduct = data.products.find((p, idx) => {
-        // We need to match by index position in the arrays
-        // Check regimens and intakes for this productId
+        if (!existingProduct) {
+          existingProduct = await tx.product.findFirst({
+            where: {
+              name: productData.name,
+              brand: productData.brand || null,
+            },
+          })
+        }
+
+        if (existingProduct) {
+          productIdMap.set(key, existingProduct.id)
+        } else {
+          const newProduct = await tx.product.create({
+            data: {
+              upc: productData.upc,
+              name: productData.name,
+              brand: productData.brand,
+              servingSize: productData.servingSize,
+              servingUnit: productData.servingUnit,
+              imageUrl: productData.imageUrl,
+              nutrients: {
+                create: productData.nutrients.map((n: { name: string; amount: number; unit: string; dailyValuePercent?: number }) => ({
+                  name: n.name,
+                  amount: n.amount,
+                  unit: n.unit,
+                  dailyValuePercent: n.dailyValuePercent,
+                })),
+              },
+            },
+          })
+          productIdMap.set(key, newProduct.id)
+        }
+      }
+
+      // Build a mapping from old product IDs to new product IDs
+      // by matching productId references in regimens/intakes to products by index
+      const oldIdToKey = new Map<string, string>()
+      for (const productData of data.products) {
+        // Find all old IDs that reference this product in regimens and intakes
+        const key = productData.name + (productData.brand || '')
+
         for (const regimen of data.regimens) {
           for (const item of regimen.items) {
-            if (item.productId === originalProductId) {
-              const matchedProduct = data.products[idx]
-              if (matchedProduct) {
-                return true
-              }
+            // Match by finding the product at the same position in the products array
+            const matchedProduct = data.products.find((p: { name: string; brand?: string; upc?: string }) =>
+              p.name === productData.name && (p.brand || '') === (productData.brand || '')
+            )
+            if (matchedProduct) {
+              oldIdToKey.set(item.productId, key)
             }
           }
         }
         for (const intake of data.intakeLogs) {
-          if (intake.productId === originalProductId) {
-            return true
-          }
-        }
-        return false
-      })
-
-      // Try to find by iterating and matching names
-      for (const product of data.products) {
-        const key = product.name + (product.brand || '')
-        const newId = productIdMap.get(key)
-        if (newId) {
-          // Check if this product was referenced by originalProductId
-          // Since we don't have a direct mapping, we'll use the key approach
-          return newId
+          oldIdToKey.set(intake.productId, key)
         }
       }
-      return null
-    }
 
-    // Build a direct mapping based on array indices
-    const directProductMap = new Map<string, string>()
-    const usedProductIds = new Set<string>()
-
-    // Collect all used product IDs from regimens and intakes
-    for (const regimen of data.regimens) {
-      for (const item of regimen.items) {
-        usedProductIds.add(item.productId)
+      const resolveProductId = (oldId: string): string | null => {
+        const key = oldIdToKey.get(oldId)
+        if (!key) return null
+        return productIdMap.get(key) || null
       }
-    }
-    for (const intake of data.intakeLogs) {
-      usedProductIds.add(intake.productId)
-    }
 
-    // For each used product ID, find matching product in export and map to new ID
-    for (const oldProductId of Array.from(usedProductIds)) {
-      // Find product in export data - this requires knowing the original ID mapping
-      // Since we only have name/brand, we'll match by the first product with matching data
-      for (const product of data.products) {
-        const key = product.name + (product.brand || '')
-        const newId = productIdMap.get(key)
-        if (newId && !directProductMap.has(oldProductId)) {
-          directProductMap.set(oldProductId, newId)
-          break
-        }
-      }
-    }
-
-    // Import regimens
-    for (const regimenData of data.regimens) {
-      // Check if regimen already exists
-      let regimen = await prisma.regimen.findFirst({
-        where: {
-          userId: user.id,
-          name: regimenData.name,
-        },
-      })
-
-      if (!regimen) {
-        regimen = await prisma.regimen.create({
-          data: {
+      // Import regimens
+      for (const regimenData of data.regimens) {
+        let regimen = await tx.regimen.findFirst({
+          where: {
             userId: user.id,
             name: regimenData.name,
           },
         })
-      }
 
-      // Import regimen items
-      for (const itemData of regimenData.items) {
-        const productKey = data.products.find((_, idx) => {
-          // Find by matching productId in items
-          return true
-        })
-
-        // Get new product ID
-        const product = data.products.find(p => {
-          const key = p.name + (p.brand || '')
-          return productIdMap.has(key)
-        })
-
-        if (!product) continue
-
-        const newProductId = productIdMap.get(product.name + (product.brand || ''))
-        if (!newProductId) continue
-
-        // Check if item already exists
-        const existingItem = await prisma.regimenItem.findFirst({
-          where: {
-            regimenId: regimen.id,
-            productId: newProductId,
-          },
-        })
-
-        if (!existingItem) {
-          await prisma.regimenItem.create({
+        if (!regimen) {
+          regimen = await tx.regimen.create({
             data: {
+              userId: user.id,
+              name: regimenData.name,
+            },
+          })
+        }
+
+        for (const itemData of regimenData.items) {
+          const newProductId = resolveProductId(itemData.productId)
+          if (!newProductId) continue
+
+          const existingItem = await tx.regimenItem.findFirst({
+            where: {
               regimenId: regimen.id,
               productId: newProductId,
-              quantity: itemData.quantity,
-              sortOrder: itemData.sortOrder,
-              scheduleDays: itemData.scheduleDays || '0,1,2,3,4,5,6',
+            },
+          })
+
+          if (!existingItem) {
+            await tx.regimenItem.create({
+              data: {
+                regimenId: regimen.id,
+                productId: newProductId,
+                quantity: itemData.quantity,
+                sortOrder: itemData.sortOrder,
+                scheduleDays: itemData.scheduleDays || '0,1,2,3,4,5,6',
+              },
+            })
+          }
+        }
+      }
+
+      // Import intake logs (only if reasonable amount)
+      const importIntakes = data.intakeLogs.length <= 100
+
+      if (importIntakes) {
+        for (const intakeData of data.intakeLogs) {
+          const newProductId = resolveProductId(intakeData.productId)
+          if (!newProductId) continue
+
+          await tx.intakeLog.create({
+            data: {
+              userId: user.id,
+              productId: newProductId,
+              date: new Date(intakeData.date),
+              quantity: intakeData.quantity,
             },
           })
         }
       }
-    }
 
-    // Import intake logs (optional - may create duplicates for same dates)
-    const importIntakes = data.intakeLogs.length <= 100 // Only import if reasonable amount
-
-    if (importIntakes) {
-      for (const intakeData of data.intakeLogs) {
-        const product = data.products.find(p => {
-          const key = p.name + (p.brand || '')
-          return productIdMap.has(key)
-        })
-
-        if (!product) continue
-
-        const newProductId = productIdMap.get(product.name + (product.brand || ''))
-        if (!newProductId) continue
-
-        await prisma.intakeLog.create({
-          data: {
-            userId: user.id,
-            productId: newProductId,
-            date: new Date(intakeData.date),
-            quantity: intakeData.quantity,
-          },
-        })
+      return {
+        userId: user.id,
+        productsImported: productIdMap.size,
+        regimensImported: data.regimens.length,
+        intakesImported: importIntakes ? data.intakeLogs.length : 0,
       }
-    }
-
-    return NextResponse.json({
-      success: true,
-      userId: user.id,
-      productsImported: productIdMap.size,
-      regimensImported: data.regimens.length,
-      intakesImported: importIntakes ? data.intakeLogs.length : 0,
     })
+
+    return NextResponse.json({ success: true, ...result })
   } catch (error) {
     console.error('Import error:', error)
     return apiError('Failed to import data', 500)

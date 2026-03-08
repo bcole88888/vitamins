@@ -6,6 +6,7 @@ import { InsightCard } from '@/components/InsightCard'
 import { NutrientChart } from '@/components/Charts/NutrientChart'
 import { AggregatedNutrient, Insight } from '@/types'
 import { generateInsights, formatDate } from '@/lib/utils'
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout'
 
 export default function InsightsPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
@@ -22,7 +23,7 @@ export default function InsightsPage() {
       start.setDate(start.getDate() - 7)
 
       const userParam = selectedUserId ? `&userId=${selectedUserId}` : ''
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `/api/nutrients?startDate=${formatDate(start)}&endDate=${formatDate(end)}${userParam}`
       )
       const data = await res.json()
@@ -37,7 +38,7 @@ export default function InsightsPage() {
       )
 
       setNutrients(avgNutrients)
-      setInsights(generateInsights(avgNutrients))
+      setInsights(generateInsights(avgNutrients, data.timeOfDayNutrients))
     } catch (error) {
       console.error('Error fetching insights:', error)
     } finally {

@@ -9,6 +9,7 @@ interface RawRow {
   unit: string
   productName: string
   totalAmount: number
+  timeOfDay: string
 }
 
 export async function GET(request: Request) {
@@ -34,46 +35,52 @@ export async function GET(request: Request) {
       ({ gte: dateGte, lte: dateLte } = utcDateRange(startDate!, endDate!))
     }
 
-    // SQL-level aggregation: SUM(nutrient.amount * intake.quantity)
-    // grouped by nutrient name, unit, and product name (for source tracking).
-    // This avoids fetching full product/nutrient objects into memory.
-    const params: (string | Date)[] = [dateGte, dateLte]
-    let userClause = ''
-    if (userId) {
-      userClause = 'AND i.userId = ?'
-      params.push(userId)
+    // Fetch intake logs with related nutrients and product names
+    const intakeLogs = await prisma.intakeLog.findMany({
+      where: {
+        date: { gte: dateGte, lte: dateLte },
+        ...(userId ? { userId } : {}),
+      },
+      select: {
+        quantity: true,
+        timeOfDay: true,
+        product: {
+          select: {
+            name: true,
+            nutrients: {
+              select: { name: true, amount: true, unit: true },
+            },
+          },
+        },
+      },
+    })
+
+    const intakeCount = intakeLogs.length
+
+    // Build aggregated rows from the intake logs
+    const rows: RawRow[] = []
+    for (const intake of intakeLogs) {
+      for (const nutrient of intake.product.nutrients) {
+        rows.push({
+          nutrientName: nutrient.name,
+          unit: nutrient.unit,
+          productName: intake.product.name,
+          timeOfDay: intake.timeOfDay,
+          totalAmount: nutrient.amount * intake.quantity,
+        })
+      }
     }
 
-    const rows = await prisma.$queryRawUnsafe<RawRow[]>(
-      `SELECT n.name AS nutrientName, n.unit, p.name AS productName,
-              SUM(n.amount * i.quantity) AS totalAmount
-       FROM IntakeLog i
-       JOIN Nutrient n ON n.productId = i.productId
-       JOIN Product  p ON p.id = i.productId
-       WHERE i.date >= ? AND i.date <= ? ${userClause}
-       GROUP BY n.name, n.unit, p.name`,
-      ...params
-    )
-
-    // Count distinct intake records for the response
-    const countRows = await prisma.$queryRawUnsafe<{ cnt: number }[]>(
-      `SELECT COUNT(*) AS cnt FROM IntakeLog i
-       WHERE i.date >= ? AND i.date <= ? ${userClause}`,
-      ...params
-    )
-    const intakeCount = Number(countRows[0]?.cnt ?? 0)
-
     // Merge rows in JS: normalize nutrient names and combine sources.
-    // The dataset is already pre-aggregated per (nutrient, product) so this
-    // loop is proportional to distinct nutrients * distinct products, not
-    // to the total number of intake records.
     const nutrientMap = new Map<string, AggregatedNutrient>()
+    const timeOfDayMap = new Map<string, Set<string>>() // timeOfDay -> Set of normalized nutrient names
 
     for (const row of rows) {
       const normalizedName = normalizeNutrientName(row.nutrientName)
       const amount = Number(row.totalAmount)
+      
+      // Update global aggregate
       const existing = nutrientMap.get(normalizedName)
-
       if (existing) {
         existing.totalAmount += amount
         existing.sources.push({ productName: row.productName, amount })
@@ -87,6 +94,12 @@ export async function GET(request: Request) {
           sources: [{ productName: row.productName, amount }],
         })
       }
+
+      // Update time-of-day map
+      if (!timeOfDayMap.has(row.timeOfDay)) {
+        timeOfDayMap.set(row.timeOfDay, new Set())
+      }
+      timeOfDayMap.get(row.timeOfDay)!.add(normalizedName)
     }
 
     // Calculate RDI percentages
@@ -97,11 +110,17 @@ export async function GET(request: Request) {
 
     nutrients.sort((a, b) => a.name.localeCompare(b.name))
 
+    const timeOfDayNutrients = Array.from(timeOfDayMap.entries()).map(([time, names]) => ({
+      timeOfDay: time,
+      nutrients: Array.from(names),
+    }))
+
     return NextResponse.json({
       date: date || `${startDate} to ${endDate}`,
       userId,
       nutrients,
       intakeCount,
+      timeOfDayNutrients,
     })
   } catch (error) {
     console.error('Error aggregating nutrients:', error)
